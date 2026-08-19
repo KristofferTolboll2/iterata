@@ -75,10 +75,14 @@ depending on the OS setting.
 Version 0.1.0, extracted from the project it was built for. It has real
 mileage (seven tagged design versions on a production site) and real gaps.
 
-**Read [REPORT.md](REPORT.md) before building on it.** It documents what
-works, what broke in practice, and the seven things that are missing, in
-priority order. The largest by a distance: a screenshot cannot review an
-animation, and this tool captures screenshots.
+The largest gap by a distance: a screenshot cannot review an animation, and
+this tool captures screenshots. Motion defects, and anything that only
+reproduces on a real device rather than an emulated viewport, still need a
+human watching.
+
+[REPORT.md](REPORT.md) is the full handover: what earned its keep, the ten
+pain points ranked by what they cost, and the seven missing pieces in the
+order they are worth building. Read it before building on this.
 
 ## License
 
