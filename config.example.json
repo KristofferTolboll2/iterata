@@ -1,0 +1,31 @@
+{
+  "$comment": "Copy to iterata.config.json in the project you are designing. Every field is optional; the values below are the defaults plus the two that are worth setting for any real site (hideOnFullPage and sections).",
+
+  "buildCommand": ["npx", "next", "build"],
+  "startCommand": ["npx", "next", "start", "-p", "{port}"],
+  "port": 4123,
+  "devUrl": "http://localhost:3000",
+  "outDir": "design-lab",
+
+  "themeStorageKey": "theme",
+
+  "$hideOnFullPage": "CSS selectors for position:fixed elements. They repeat down a fullPage capture, so they are hidden for those shots only. A selector that matches nothing prints a warning rather than failing silently.",
+  "hideOnFullPage": ["[data-dock]", "header.fixed"],
+
+  "$sections": "Element ids captured as individual crops during the full rig.",
+  "sections": ["about", "work", "contact"],
+
+  "viewports": {
+    "desktop": { "width": 1440, "height": 900 },
+    "mobile": { "width": 390, "height": 844 }
+  },
+
+  "timing": {
+    "scrollStep": 250,
+    "settleAfter": 2000,
+    "afterScrollTop": 600,
+    "sectionSettle": 400
+  },
+
+  "jpegQuality": 80
+}
