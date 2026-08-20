@@ -235,6 +235,7 @@ const USAGE =
   "  iterata --list                                        versions captured so far\n" +
   "  iterata --gallery                                     build <outDir>/gallery.html\n" +
   "  iterata --diff <vA> <vB>                              before/after report for two versions\n" +
+  "  iterata <label> --scratch                             capture without spending a version\n" +
   "\n" +
   "The version is optional: omitted, the next one is taken from the ledger at\n" +
   "<outDir>/manifest.json. --note records what changed, so the history is\n" +
@@ -245,6 +246,11 @@ const cfg = loadConfig(cwd);
 const quick = flag("quick");
 const skipBuild = flag("skip-build");
 const note = value("note");
+// A scratch run captures and is recorded so it can be diffed, but is not a
+// design version: it does not take a number, and does not reach --list or the
+// gallery. Verifying tool behaviour against a real project should not spend
+// version numbers the gallery then reads from.
+const scratch = flag("scratch");
 
 // ------------------------------------------------------------------ diff
 
@@ -417,7 +423,10 @@ ${body || "<p>Nothing differs by more than the threshold.</p>"}
 
 async function runDiff(cwd, cfg, va, vb) {
   const { runs } = readManifest(cwd, cfg);
-  const find = (v) => [...runs].reverse().find((r) => r.mode === "full" && r.version === v);
+  // Scratch runs are diffable: verifying tool behaviour against a real project
+  // is exactly when you want a before and after.
+  const find = (v) =>
+    [...runs].reverse().find((r) => (r.mode === "full" || r.mode === "scratch") && r.version === v);
   const a = find(va), b = find(vb);
   for (const [v, r] of [[va, a], [vb, b]]) {
     if (!r) {
@@ -569,6 +578,11 @@ if (flag("list")) {
 
 // Quick mode names a scratch file, so it needs a label from you. The full rig
 // numbers itself.
+if (scratch && !label) {
+  console.error("a scratch run needs a label, e.g. `iterata freeze-check --scratch`\n\n" + USAGE);
+  process.exit(1);
+}
+
 if (quick && !label) {
   console.error("a quick shot needs a label, e.g. `iterata hero-spacing --quick`\n\n" + USAGE);
   process.exit(1);
@@ -721,12 +735,34 @@ async function newPage(browser, { width, height, theme, route, reduce = false })
 // declarative can. A site with a live canvas backdrop will still diff dirty.
 async function freezeMotion(page) {
   await page.evaluate(() => {
+    // Metadata on a keyframe, not properties to write to the element.
+    const META = new Set(["offset", "computedOffset", "composite", "easing"]);
     for (const a of document.getAnimations()) {
       try {
         if (a.effect?.getTiming?.().iterations !== Infinity) continue;
-        a.currentTime = 0;
-        a.commitStyles();
-        a.cancel();
+        const target = a.effect.target;
+        const first = a.effect.getKeyframes?.()[0];
+
+        if (target && first && first.computedOffset === 0) {
+          // Read the declared start frame and write it as inline style. This
+          // never consults a clock, so it cannot land near zero instead of at
+          // it. That distinction is invisible on a linear animation, where a
+          // few residual milliseconds move nothing perceptible, and visible on
+          // an aggressive ease-out, where the curve is near vertical at t=0 and
+          // the same residue is different geometry.
+          a.cancel();
+          for (const [k, v] of Object.entries(first)) {
+            if (META.has(k)) continue;
+            target.style.setProperty(k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase()), String(v));
+          }
+        } else {
+          // No usable start frame, so fall back to seeking. Cancelling matters
+          // either way: a CSS-declared animation is owned by the style engine,
+          // which re-syncs on the next recalculation and undoes a bare pause.
+          a.currentTime = 0;
+          a.commitStyles();
+          a.cancel();
+        }
       } catch {}
     }
   });
@@ -897,6 +933,6 @@ for (const route of cfg.routes) {
 
 await browser.close();
 stopServer();
-record("full");
+record(scratch ? "scratch" : "full");
 console.log(`done: ${outDir}`);
 process.exit(0);

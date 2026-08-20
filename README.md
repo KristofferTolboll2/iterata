@@ -78,6 +78,9 @@ iterata --gallery
 
 # Before/after report for two versions
 iterata --diff v0.1 v0.2
+
+# Capture without spending a version number
+iterata freeze-check --scratch
 ```
 
 Output lands in `design-lab/quick/<label>.jpg` or

@@ -194,6 +194,15 @@ v0.2     2026-08-20 05:14   8 shots  a41c2f9+dirty
 `--note` is why there is no log file to maintain. The description lives with
 the run that it describes.
 
+Verifying tool behaviour is not a design version, so it should not spend one:
+
+```bash
+iterata freeze-check --scratch
+```
+
+A scratch run captures and is recorded, so `--diff` can still reach it, but it
+takes no version number and stays out of `--list` and the gallery.
+
 **None of this requires version control.** iterata runs the same in a directory
 git has never seen. When the project *is* a repository, the short SHA, branch
 and dirty flag are recorded against each version, because the useful thing a
