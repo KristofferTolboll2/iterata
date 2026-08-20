@@ -278,8 +278,12 @@ async function runProbe(cwd, cfg, label, selectors, times, props, url) {
   }
   const page = await context.newPage();
 
-  // Deliberately no settle() and no freezeMotion(): the clock starting at
-  // navigation is the thing being measured.
+  // Deliberately no settle() and no freezeMotion(). The obvious reason is that
+  // both would destroy the measurement, but the load-bearing one is stronger:
+  // the sample at 0ms is the only view of the page before anything has
+  // hydrated or animated, which is what a crawler and a reader without JS get.
+  // Settling here for consistency with the capture modes would delete that
+  // view, and it would look like a tidy-up rather than a loss.
   const res = await page.goto(url, { waitUntil: "domcontentloaded" });
   if (res && !res.ok()) console.warn(`  ! ${url} responded ${res.status()}`);
   const started = Date.now();
@@ -952,6 +956,21 @@ async function fullPageShot(page, name) {
   await setFixedDisplay(page, cfg.hideOnFullPage, "");
 }
 
+// Shared by both viewports. A missing section is warned about once, on the
+// desktop pass, so a stale id does not print the same line twice per route.
+async function sectionCrops(page, route, prefix, warn) {
+  for (const id of cfg.sections) {
+    const target = page.locator(`#${id}`);
+    if ((await target.count()) === 0) {
+      if (warn) console.warn(`warning: section #${id} not found on ${route.path}, skipping crop`);
+      continue;
+    }
+    await target.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(cfg.timing.sectionSettle);
+    await sectionShot(target, page, shot(route, `${prefix}-${id}`));
+  }
+}
+
 // Crops used to shoot straight through whatever fixed chrome happened to sit
 // over the element, so a dock or a scrim landed in the middle of the frame and
 // read as a fault in the section.
@@ -1008,20 +1027,14 @@ for (const route of cfg.routes) {
     });
     await fullPageShot(page, shot(route, `desktop-${primary}-full`));
     await page.screenshot(jpg(shot(route, `desktop-${primary}-hero`)));
-    for (const id of cfg.sections) {
-      const target = page.locator(`#${id}`);
-      if ((await target.count()) === 0) {
-        console.warn(`warning: section #${id} not found on ${route.path}, skipping crop`);
-        continue;
-      }
-      await target.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(cfg.timing.sectionSettle);
-      await sectionShot(target, page, shot(route, `desktop-${primary}-${id}`));
-    }
+    await sectionCrops(page, route, `desktop-${primary}`, true);
     await context.close();
   }
 
-  // 2. Mobile, primary theme, full page.
+  // 2. Mobile, primary theme: full page and the same section crops as desktop.
+  //    A layout breaks at the narrow viewport first, and mobile had only ever
+  //    been captured whole, which is the size at which a broken section is
+  //    least visible.
   {
     const { context, page } = await newPage(browser, {
       ...cfg.viewports.mobile,
@@ -1029,6 +1042,7 @@ for (const route of cfg.routes) {
       route,
     });
     await fullPageShot(page, shot(route, `mobile-${primary}-full`));
+    await sectionCrops(page, route, `mobile-${primary}`, false);
     await context.close();
   }
 
@@ -1043,16 +1057,22 @@ for (const route of cfg.routes) {
     await context.close();
   }
 
-  // 4. Reduced motion: content must land in its final state with no animation.
-  //    Captured only. Nothing asserts it, a human still compares. See REPORT.md.
-  {
+  // 4. Reduced motion, both viewports: content must land in its final state
+  //    with no animation. Captured only. Nothing asserts it, a human still
+  //    compares. This is the shot that catches a reveal leaving whole sections
+  //    at opacity 0, so it is worth having at the viewport where the reveals
+  //    differ. See REPORT.md.
+  for (const [name, viewport] of [
+    ["desktop", cfg.viewports.desktop],
+    ["mobile", cfg.viewports.mobile],
+  ]) {
     const { context, page } = await newPage(browser, {
-      ...cfg.viewports.desktop,
+      ...viewport,
       theme: primary,
       route,
       reduce: true,
     });
-    await fullPageShot(page, shot(route, `desktop-${primary}-reduced-motion`));
+    await fullPageShot(page, shot(route, `${name}-${primary}-reduced-motion`));
     await context.close();
   }
 }

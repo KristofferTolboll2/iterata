@@ -176,7 +176,9 @@ project sees the names below unchanged.
 | `desktop-<primary>-hero` | First viewport, with fixed chrome left in |
 | `desktop-<primary>-<section>` | One crop per configured section id |
 | `mobile-<primary>-full` | Narrow-viewport layout |
+| `mobile-<primary>-<section>` | The same crops where a layout breaks first |
 | `desktop-<primary>-reduced-motion` | Content must land in its final state |
+| `mobile-<primary>-reduced-motion` | The same, where reveals often differ |
 | `desktop-<theme>-full` | One per remaining theme, none on a single-theme site |
 
 Fixed elements are hidden during full-page captures, because a
