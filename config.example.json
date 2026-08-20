@@ -10,6 +10,9 @@
   "$routes": "Routes to capture, each crossed with every theme. Defaults to [\"/\"]. An entry is a path string, or { \"path\": \"/x\", \"name\": \"slug\" } when you want to name the capture files yourself. The root route contributes no prefix, so a single-route project gets the same filenames it always had; every other route prefixes its slug, e.g. da-desktop-dark-full.jpg.",
   "routes": ["/"],
 
+  "$freezeMotion": "Freeze endless animations before each shot so two captures of an unchanged page are identical and --diff does not fill with regions that mean nothing. Runs after the page settles, so entrance animations finish first and only looping ones are stopped. It cannot reach a requestAnimationFrame canvas. Set false to capture motion as it lands.",
+  "freezeMotion": true,
+
   "$themes": "Themes to capture, in order. The first is the primary and gets the hero shot, the section crops, the mobile shot and the reduced-motion shot; the rest get a full-page shot only. A site with one theme should list only that theme, otherwise the rig shoots the same page twice under two names. Only \"light\" and \"dark\" are accepted.",
   "themes": ["dark", "light"],
 

@@ -41,6 +41,13 @@ const DEFAULTS = {
   // the root only. Entries are either a path string or { path, name }, where
   // name overrides the slug that goes into the filename.
   routes: ["/"],
+  // Ambient motion makes every capture land on a different frame, so two runs
+  // of an unchanged page differ and a diff fills with regions that mean
+  // nothing. A report that always shows regions teaches the reader to skim
+  // past them, and then a real change hides among the petals. Freezing runs
+  // after the page has settled, so entrance animations finish first and only
+  // the endless ones are stopped. Set false to see motion as it lands.
+  freezeMotion: true,
   // Themes to capture, in order. The first is the primary: it gets the hero
   // shot, the section crops, the mobile shot and the reduced-motion shot.
   // Every other theme gets a full-page shot only. A single-theme site should
@@ -691,7 +698,38 @@ async function newPage(browser, { width, height, theme, route, reduce = false })
     console.warn(`  ! ${urlFor(route)} responded ${res.status()} — the capture below is that response, not the page`);
   }
   await settle(page, cfg.timing);
+  if (cfg.freezeMotion) await freezeMotion(page);
   return { context, page };
+}
+
+// Runs only after settle(), which matters more than it looks: pausing before
+// entrance animations finish would freeze content halfway in and photograph a
+// page that never existed.
+//
+// Only endless animations are touched, so finite ones keep whatever end state
+// they filled to. Each is seeked to its start, that frame is written to the
+// element as inline style, and the animation is then cancelled.
+//
+// Pausing alone does not hold. A CSS-declared animation is owned by the style
+// engine, which re-syncs it on the next recalculation and undoes both the pause
+// and the seek: measured, a paused-and-seeked element still read currentTime
+// 24ms and two runs still differed. Committing the frame and removing the
+// animation leaves nothing to re-sync, and two independent loads then produce
+// byte-identical transforms.
+//
+// This cannot reach a requestAnimationFrame loop painting a canvas. Nothing
+// declarative can. A site with a live canvas backdrop will still diff dirty.
+async function freezeMotion(page) {
+  await page.evaluate(() => {
+    for (const a of document.getAnimations()) {
+      try {
+        if (a.effect?.getTiming?.().iterations !== Infinity) continue;
+        a.currentTime = 0;
+        a.commitStyles();
+        a.cancel();
+      } catch {}
+    }
+  });
 }
 
 // Route slug goes in front so a multi-route set groups by route when listed.

@@ -133,6 +133,22 @@ Defaults assume Next.js. `{port}` is substituted into `startCommand`. Set
 `buildCommand` to `null` for a project that serves straight from source.
 `devUrl` is what quick mode hits, and defaults to `http://localhost:3000`.
 
+### `freezeMotion`
+
+Defaults to `true`. Ambient motion, a petal layer, a gradient wash, a marquee,
+makes every capture land on a different frame, so two runs of an unchanged page
+differ and `--diff` fills with regions that mean nothing. A report that always
+shows regions teaches you to skim past them, and then a real change hides among
+them.
+
+Freezing runs after the page settles, so entrance animations finish first and
+only looping ones are stopped. On a page with thirteen looping elements this
+took a same-page diff from 2209 changed pixels across 13 regions to exactly 0.
+
+It cannot reach a `requestAnimationFrame` loop painting a canvas, and nothing
+declarative can. A site with a live canvas backdrop will still diff dirty, and
+needs region masking instead.
+
 ## 4. Prove it works before you trust it
 
 ```bash
