@@ -75,10 +75,31 @@ iterata --list
 
 # Build <outDir>/gallery.html from the ledger
 iterata --gallery
+
+# Before/after report for two versions
+iterata --diff v0.1 v0.2
 ```
 
 Output lands in `design-lab/quick/<label>.jpg` or
 `design-lab/<version>/screens/*.jpg`.
+
+## Comparing versions
+
+`iterata --diff <a> <b>` writes a report showing what actually changed between
+two captured versions: every shot they share, the count of differing pixels,
+and each changed region cropped from both versions and shown side by side.
+
+The comparison is per-pixel with a low threshold, and that is a deliberate
+choice rather than an implementation detail. A row mean or an image mean will
+report "nothing changed" when something did, because two glyphs appearing on a
+6040px page cannot move an average. A diff that misses a change reports clean,
+and nothing prompts you to look again. Two versions of a real site differed by
+0.004% of their pixels; that is invisible to someone flipping between two tall
+screenshots, and obvious in the report.
+
+It runs against captured versions only, so it needs no server, build or
+network, and it decodes in the Chromium that Playwright already provides rather
+than adding an image library.
 
 ## Versioning
 

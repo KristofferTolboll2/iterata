@@ -227,6 +227,7 @@ const USAGE =
   "  iterata [version] [--skip-build] [--port N] [--note]  full rig, every configured route\n" +
   "  iterata --list                                        versions captured so far\n" +
   "  iterata --gallery                                     build <outDir>/gallery.html\n" +
+  "  iterata --diff <vA> <vB>                              before/after report for two versions\n" +
   "\n" +
   "The version is optional: omitted, the next one is taken from the ledger at\n" +
   "<outDir>/manifest.json. --note records what changed, so the history is\n" +
@@ -237,6 +238,223 @@ const cfg = loadConfig(cwd);
 const quick = flag("quick");
 const skipBuild = flag("skip-build");
 const note = value("note");
+
+// ------------------------------------------------------------------ diff
+
+// Per-pixel, deliberately. A row mean or an image mean will report "nothing
+// changed" when something did: two glyphs appearing on a 6040px page cannot
+// move an average, and the answer comes back clean and confident. A false
+// negative in a diff is worse than a false positive, because nothing prompts
+// you to check it. Count pixels over a threshold and report where they are.
+const DIFF_THRESHOLD = 24;
+const DIFF_CELL = 16;
+
+async function diffImages(page, aData, bData, threshold) {
+  return page.evaluate(
+    async ({ a, b, t, cell }) => {
+      const load = (src) =>
+        new Promise((res, rej) => {
+          const im = new Image();
+          im.onload = () => res(im);
+          im.onerror = () => rej(new Error("decode failed"));
+          im.src = src;
+        });
+      const [ia, ib] = await Promise.all([load(a), load(b)]);
+      const w = Math.min(ia.width, ib.width);
+      const h = Math.min(ia.height, ib.height);
+      const pixels = (im) => {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const x = c.getContext("2d", { willReadFrequently: true });
+        x.drawImage(im, 0, 0);
+        return x.getImageData(0, 0, w, h).data;
+      };
+      const da = pixels(ia);
+      const db = pixels(ib);
+
+      const cols = Math.ceil(w / cell);
+      const rows = Math.ceil(h / cell);
+      const counts = new Uint32Array(cols * rows);
+      let changed = 0;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          const d = Math.max(
+            Math.abs(da[i] - db[i]),
+            Math.abs(da[i + 1] - db[i + 1]),
+            Math.abs(da[i + 2] - db[i + 2]),
+          );
+          if (d > t) {
+            changed++;
+            counts[((y / cell) | 0) * cols + ((x / cell) | 0)]++;
+          }
+        }
+      }
+      // No per-cell minimum. A floor here could only ever hide a small real
+      // change, and a diff that misses something reports clean, which is the
+      // failure nobody goes looking for.
+      const grid = new Uint8Array(cols * rows);
+      for (let i = 0; i < counts.length; i++) if (counts[i] > 0) grid[i] = 1;
+
+      // Flood fill the marked cells so adjacent changes become one region
+      // rather than a scatter of boxes the reader has to reassemble.
+      const boxes = [];
+      const seen = new Uint8Array(grid.length);
+      for (let i = 0; i < grid.length; i++) {
+        if (!grid[i] || seen[i]) continue;
+        let x0 = i % cols, x1 = x0, y0 = (i / cols) | 0, y1 = y0;
+        const queue = [i];
+        seen[i] = 1;
+        while (queue.length) {
+          const c = queue.pop();
+          const cx = c % cols, cy = (c / cols) | 0;
+          if (cx < x0) x0 = cx;
+          if (cx > x1) x1 = cx;
+          if (cy < y0) y0 = cy;
+          if (cy > y1) y1 = cy;
+          for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+            const n = ny * cols + nx;
+            if (grid[n] && !seen[n]) { seen[n] = 1; queue.push(n); }
+          }
+        }
+        boxes.push({
+          x: x0 * cell,
+          y: y0 * cell,
+          w: Math.min((x1 - x0 + 1) * cell, w - x0 * cell),
+          h: Math.min((y1 - y0 + 1) * cell, h - y0 * cell),
+        });
+      }
+      boxes.sort((p, q) => p.y - q.y || p.x - q.x);
+      return {
+        changed,
+        total: w * h,
+        width: w,
+        height: h,
+        sizeA: [ia.width, ia.height],
+        sizeB: [ib.width, ib.height],
+        boxes,
+      };
+    },
+    { a: aData, b: bData, t: threshold, cell: DIFF_CELL },
+  );
+}
+
+// The report is the deliverable, not the pixel count. Each changed region is
+// cropped from both versions and shown side by side at the same offset, so the
+// reader sees what moved instead of being told how much did.
+function diffReport(cfg, a, b, results, onlyA, onlyB) {
+  const esc = (t) =>
+    String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const rel = (run, shot) => `${run.outDir.split("/").slice(1).join("/")}/${shot}`;
+
+  const pane = (run, shot, box) =>
+    `<div class="pane" style="width:${box.w}px;height:${box.h}px;` +
+    `background-image:url('${esc(rel(run, shot))}');` +
+    `background-position:-${box.x}px -${box.y}px"></div>`;
+
+  const changed = results.filter((r) => r.changed > 0);
+  const same = results.filter((r) => r.changed === 0);
+
+  const body = changed
+    .map((r) => {
+      const regions = r.boxes
+        .map(
+          (box, i) =>
+            `<div class="region"><p class="rlabel">region ${i + 1} &middot; ${box.w}&times;${box.h} at ${box.x},${box.y}</p>` +
+            `<div class="pair"><figure>${pane(a, r.shot, box)}<figcaption>${esc(a.version)}</figcaption></figure>` +
+            `<figure>${pane(b, r.shot, box)}<figcaption>${esc(b.version)}</figcaption></figure></div></div>`,
+        )
+        .join("");
+      return `<section><h2>${esc(r.shot)}</h2><p class="meta">${r.changed.toLocaleString()} pixels differ by more than ${DIFF_THRESHOLD} &middot; ${r.pct.toFixed(4)}% of ${r.width}&times;${r.height} &middot; ${r.boxes.length} region${r.boxes.length === 1 ? "" : "s"}</p>${regions}</section>`;
+    })
+    .join("");
+
+  const notes = [
+    same.length ? `<li>${same.length} shot${same.length === 1 ? "" : "s"} identical: ${same.map((r) => esc(r.shot)).join(", ")}</li>` : "",
+    onlyA.length ? `<li>Only in ${esc(a.version)}: ${onlyA.map(esc).join(", ")}</li>` : "",
+    onlyB.length ? `<li>Only in ${esc(b.version)}: ${onlyB.map(esc).join(", ")}</li>` : "",
+  ].filter(Boolean).join("");
+
+  return `<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(a.version)} to ${esc(b.version)}</title>
+<style>
+  :root{color-scheme:light dark;--bg:#fff;--fg:#111;--dim:#666;--line:#e5e5e5;--mark:#d33}
+  @media (prefers-color-scheme:dark){:root{--bg:#111;--fg:#eee;--dim:#999;--line:#333;--mark:#f66}}
+  body{margin:0;padding:2rem 1.5rem;background:var(--bg);color:var(--fg);
+    font:16px/1.5 system-ui,sans-serif;max-width:1200px;margin-inline:auto}
+  h1{font-size:1.5rem;margin:0}
+  .lede{color:var(--dim);margin:.5rem 0 2rem;max-width:70ch}
+  .note{margin:0 0 1rem;padding:0 0 0 1.1rem;color:var(--dim);font-size:14px}
+  section{border-top:1px solid var(--line);padding:1.5rem 0}
+  h2{font:14px ui-monospace,monospace;margin:0 0 .25rem}
+  .meta{margin:0 0 1rem;color:var(--dim);font:13px ui-monospace,monospace}
+  .region{margin:0 0 1.5rem}
+  .rlabel{margin:0 0 .4rem;color:var(--mark);font:12px ui-monospace,monospace}
+  .pair{display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start}
+  figure{margin:0}
+  .pane{background-repeat:no-repeat;border:1px solid var(--line);border-radius:3px;
+    max-width:100%}
+  figcaption{margin-top:.3rem;color:var(--dim);font:12px ui-monospace,monospace}
+</style>
+<h1>${esc(a.version)} &rarr; ${esc(b.version)}</h1>
+<p class="lede">${esc(b.note ?? "")}</p>
+${notes ? `<ul class="note">${notes}</ul>` : ""}
+${body || "<p>Nothing differs by more than the threshold.</p>"}
+`;
+}
+
+async function runDiff(cwd, cfg, va, vb) {
+  const { runs } = readManifest(cwd, cfg);
+  const find = (v) => [...runs].reverse().find((r) => r.mode === "full" && r.version === v);
+  const a = find(va), b = find(vb);
+  for (const [v, r] of [[va, a], [vb, b]]) {
+    if (!r) {
+      console.error(`no full-rig version "${v}" in ${manifestPath(cfg)}. iterata --list shows what there is.`);
+      process.exit(1);
+    }
+  }
+
+  const shared = (a.shots ?? []).filter((sh) => (b.shots ?? []).includes(sh));
+  const onlyA = (a.shots ?? []).filter((sh) => !(b.shots ?? []).includes(sh));
+  const onlyB = (b.shots ?? []).filter((sh) => !(a.shots ?? []).includes(sh));
+  if (!shared.length) {
+    console.error(`${va} and ${vb} share no shot names, so there is nothing to compare.`);
+    process.exit(1);
+  }
+
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.goto("about:blank");
+
+  const dataUrl = (dir, shot) =>
+    `data:image/jpeg;base64,${readFileSync(resolve(cwd, dir, shot)).toString("base64")}`;
+
+  const results = [];
+  for (const shot of shared) {
+    const r = await diffImages(page, dataUrl(a.outDir, shot), dataUrl(b.outDir, shot), DIFF_THRESHOLD);
+    const pct = (r.changed / r.total) * 100;
+    results.push({ shot, ...r, pct });
+    const grew = String(r.sizeA) !== String(r.sizeB) ? `  (size ${r.sizeA.join("x")} -> ${r.sizeB.join("x")}, compared to the overlap)` : "";
+    console.log(
+      `  ${shot.padEnd(38)} ${String(r.changed).padStart(8)} px  ${pct.toFixed(4).padStart(8)}%  ${String(r.boxes.length).padStart(3)} region${r.boxes.length === 1 ? "" : "s"}${grew}`,
+    );
+  }
+  await browser.close();
+
+  const out = join(cfg.outDir, `diff-${va}-${vb}.html`);
+  writeFileSync(resolve(cwd, out), diffReport(cfg, a, b, results, onlyA, onlyB));
+  const totalChanged = results.reduce((n, r) => n + r.changed, 0);
+  console.log(
+    totalChanged === 0
+      ? `\nNo pixel differs by more than ${DIFF_THRESHOLD}. That is a real result, not a failure to look: the comparison is per-pixel, not an average.`
+      : `\nwrote ${out}`,
+  );
+}
 
 // The skill's checkpoint step asks for a gallery. The ledger already holds
 // everything one needs, so build it from there rather than leaving each run to
@@ -305,6 +523,18 @@ ${sections}
 // the arguments are.
 if (flag("help") || args.includes("-h")) {
   console.log(USAGE);
+  process.exit(0);
+}
+
+// --diff takes two versions and needs no server, build or capture.
+if (flag("diff")) {
+  const i = args.indexOf("--diff");
+  const [va, vb] = [args[i + 1], args[i + 2]];
+  if (!va || !vb || va.startsWith("--") || vb.startsWith("--")) {
+    console.error("usage: iterata --diff <versionA> <versionB>\n\n" + USAGE);
+    process.exit(1);
+  }
+  await runDiff(cwd, cfg, va, vb);
   process.exit(0);
 }
 

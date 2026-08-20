@@ -77,7 +77,13 @@ loop's largest known blind spot.
    apply / reject / hold per finding). Cap each agent's job at review, never
    implementation. Both depend on skills installed at the user level; if they
    are absent, say so and skip the pass rather than improvising a substitute.
-5. `iterata --gallery` rebuilds `<outDir>/gallery.html` from the ledger. There
+5. `iterata --diff <previous> <this>` writes the before/after report and is
+   what you show the owner. Do not describe a checkpoint as "no visible change"
+   on the strength of looking at two full-page shots: real changes routinely
+   come to a few thousandths of a percent of the pixels, and a side effect you
+   did not intend, an element nudged by a sibling's layout, looks like nothing
+   until the diff puts the two crops next to each other.
+6. `iterata --gallery` rebuilds `<outDir>/gallery.html` from the ledger. There
    is nothing to maintain by hand: `--note` put the description in the ledger,
    `iterata --list` reads it back, and the gallery is generated from the same
    record. Never hand-write that file, or two runs of this loop produce
