@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/iterata.jpg" width="900"
+  <img src="https://raw.githubusercontent.com/KristofferTolboll2/iterata/main/assets/iterata.jpg" width="900"
        alt="iterata: six Mona Lisas in a row, progressing from a rough pencil sketch on torn paper, through a gridded line drawing, a flat colour block-in, a loose underpainting and a finished panel, to the framed masterpiece.">
 </p>
 
