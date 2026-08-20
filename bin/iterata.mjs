@@ -225,7 +225,9 @@ const value = (name) => {
 // Flags that consume the argument after them, so their values are not mistaken
 // for the label. Matched on position: indexOf() returns the first occurrence,
 // which drops a label identical to an earlier flag's value.
-const VALUE_FLAGS = new Set(["--url", "--port", "--config", "--route", "--note"]);
+const VALUE_FLAGS = new Set([
+  "--url", "--port", "--config", "--route", "--note", "--selectors", "--at", "--props",
+]);
 const label = args.find((a, i) => !a.startsWith("--") && !VALUE_FLAGS.has(args[i - 1]));
 
 const USAGE =
@@ -236,6 +238,7 @@ const USAGE =
   "  iterata --gallery                                     build <outDir>/gallery.html\n" +
   "  iterata --diff <vA> <vB>                              before/after report for two versions\n" +
   "  iterata <label> --scratch                             capture without spending a version\n" +
+  "  iterata [label] --probe --selectors .a,.b [--at 0,400] read computed style over time\n" +
   "\n" +
   "The version is optional: omitted, the next one is taken from the ledger at\n" +
   "<outDir>/manifest.json. --note records what changed, so the history is\n" +
@@ -251,6 +254,79 @@ const note = value("note");
 // gallery. Verifying tool behaviour against a real project should not spend
 // version numbers the gallery then reads from.
 const scratch = flag("scratch");
+
+// ----------------------------------------------------------------- probe
+
+// A still frame cannot review motion, and the fixes that make captures
+// deterministic work by stopping motion, which is the opposite of what you
+// need when the motion IS the change. A probe reads the DOM instead: what an
+// element's computed style actually is at a given moment. It does not care
+// what frame anything is on, so nothing here needs settling or freezing, and
+// an assertion like "ends at opacity 1" is checkable in a way a contact sheet
+// of stills is not.
+const PROBE_PROPS = ["opacity", "transform", "visibility", "display"];
+
+async function runProbe(cwd, cfg, label, selectors, times, props, url) {
+  const browser = await chromium.launch();
+  const context = await browser.newContext({
+    viewport: cfg.viewports.desktop,
+    colorScheme: cfg.themes[0],
+    deviceScaleFactor: 1,
+  });
+  if (cfg.themeStorageKey) {
+    await context.addInitScript(([k, t]) => localStorage.setItem(k, t), [cfg.themeStorageKey, cfg.themes[0]]);
+  }
+  const page = await context.newPage();
+
+  // Deliberately no settle() and no freezeMotion(): the clock starting at
+  // navigation is the thing being measured.
+  const res = await page.goto(url, { waitUntil: "domcontentloaded" });
+  if (res && !res.ok()) console.warn(`  ! ${url} responded ${res.status()}`);
+  const started = Date.now();
+
+  const samples = [];
+  for (const t of times) {
+    const wait = t - (Date.now() - started);
+    if (wait > 0) await page.waitForTimeout(wait);
+    const at = Date.now() - started;
+    const row = await page.evaluate(
+      ({ sels, wanted }) =>
+        sels.map((sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return { sel, missing: true };
+          const cs = getComputedStyle(el);
+          const out = { sel };
+          for (const p of wanted) out[p] = cs.getPropertyValue(p);
+          return out;
+        }),
+      { sels: selectors, wanted: props },
+    );
+    samples.push({ requested: t, actual: at, values: row });
+  }
+  await browser.close();
+
+  const width = Math.max(...selectors.map((s) => s.length), 8);
+  console.log(`${"time".padEnd(8)}${"selector".padEnd(width + 2)}${props.join("  ")}`);
+  for (const s of samples) {
+    for (const v of s.values) {
+      const cells = v.missing
+        ? "(no element matches)"
+        : props.map((p) => v[p]).join("  ");
+      console.log(`${String(s.actual + "ms").padEnd(8)}${v.sel.padEnd(width + 2)}${cells}`);
+    }
+  }
+  // A missing selector is the difference between "it ends at opacity 1" and
+  // "nothing was measured", and those must not read the same.
+  const missing = [...new Set(samples.flatMap((s) => s.values.filter((v) => v.missing).map((v) => v.sel)))];
+  if (missing.length) console.warn(`\nwarning: matched no element: ${missing.join(", ")}`);
+
+  if (label) {
+    const out = join(cfg.outDir, "probe", `${label}.json`);
+    mkdirSync(resolve(cwd, join(cfg.outDir, "probe")), { recursive: true });
+    writeFileSync(resolve(cwd, out), JSON.stringify({ url, selectors, props, samples }, null, 2) + "\n");
+    console.log(`\nwrote ${out}`);
+  }
+}
 
 // ------------------------------------------------------------------ diff
 
@@ -539,6 +615,29 @@ ${sections}
 // the arguments are.
 if (flag("help") || args.includes("-h")) {
   console.log(USAGE);
+  process.exit(0);
+}
+
+// --probe runs against a live page like quick mode, but measures instead of
+// photographing, so it is the one mode that can review motion.
+if (flag("probe")) {
+  const selectors = (value("selectors") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (!selectors.length) {
+    console.error("--probe needs --selectors, e.g. --selectors '.hero-name,.statue'\n\n" + USAGE);
+    process.exit(1);
+  }
+  // Empty entries are dropped before conversion: Number("") is 0, so an empty
+  // --at would otherwise become a silent single sample at time zero.
+  const times = (value("at") || "0,250,500,1000,2000,3000")
+    .split(",").map((x) => x.trim()).filter(Boolean)
+    .map(Number).filter((n) => Number.isFinite(n) && n >= 0)
+    .sort((a, b) => a - b);
+  if (!times.length) {
+    console.error("--at needs at least one non-negative number of milliseconds\n\n" + USAGE);
+    process.exit(1);
+  }
+  const props = (value("props") ?? PROBE_PROPS.join(",")).split(",").map((x) => x.trim()).filter(Boolean);
+  await runProbe(cwd, cfg, label, selectors, times, props, value("url") ?? cfg.devUrl);
   process.exit(0);
 }
 

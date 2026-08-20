@@ -81,10 +81,39 @@ iterata --diff v0.1 v0.2
 
 # Capture without spending a version number
 iterata freeze-check --scratch
+
+# Measure motion instead of photographing it
+iterata --probe --selectors ".hero,.statue" --at 0,400,900,2400
 ```
 
 Output lands in `design-lab/quick/<label>.jpg` or
 `design-lab/<version>/screens/*.jpg`.
+
+## Reviewing motion
+
+Every capture in this tool is a still, and a still cannot review an animation.
+It is worse than unhelpful: a shot fired mid-sequence catches one arbitrary
+frame and presents it as the design.
+
+`--probe` measures instead of photographing.
+
+```
+$ iterata --probe --selectors ".enter" --at 0,150,400,900
+time    selector  opacity  transform
+0ms     .enter    0        matrix(1, 0, 0, 1, 0, 40)
+151ms   .enter    0        matrix(1, 0, 0, 1, 0, 40)
+400ms   .enter    0.453384 matrix(1, 0, 0, 1, 0, 21.8646)
+901ms   .enter    1        matrix(1, 0, 0, 1, 0, 0)
+```
+
+It reads computed style from the DOM, so it is the one mode unaffected by which
+frame anything is on, and "lands at opacity 1 by 900ms" becomes checkable. It
+does not run `freezeMotion` or settle the page, because the clock starting at
+navigation is the thing being measured. A selector matching nothing is reported
+rather than silently omitted.
+
+It cannot tell you whether the motion looks good. It can tell you it runs and
+where it ends.
 
 ## Comparing versions
 

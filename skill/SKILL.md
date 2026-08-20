@@ -55,10 +55,25 @@ pass). If a change needs more than about five minutes of work, split it.
    agents between micro-iterations.
 5. Repeat on their direction.
 
-**A still frame cannot review an animation.** When the change is motion, say
-so and ask the owner to watch it, or capture a filmstrip by hand. Do not
-report an animation as working on the strength of one screenshot. This is the
-loop's largest known blind spot.
+**A still frame cannot review an animation.** Worse, it can look like a
+finished design that never existed: a shot fired mid-sequence catches one
+arbitrary frame and reports it as the page. Never call motion working on the
+strength of a screenshot.
+
+When the change is motion, measure it instead:
+
+```
+iterata --probe --selectors ".hero-name,.statue" --at 0,400,900,2400
+```
+
+That prints the computed style of each selector at each moment, so "ends at
+opacity 1, starts at 0, wipe finishes by 900ms" becomes something you can check
+rather than squint at. It reads the DOM, so unlike every capture in this
+pipeline it is unaffected by which frame anything happens to be on.
+
+A probe still cannot tell you whether motion looks good. Ask the owner to watch
+it for that. What it can do is prove the thing runs and lands where it should,
+which is what a screenshot was silently failing to do.
 
 ## Checkpoint (on request, or after a coherent batch of micro-iterations)
 
