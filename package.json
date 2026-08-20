@@ -12,7 +12,8 @@
     "skill",
     "assets",
     "config.example.json",
-    "README.md"
+    "README.md",
+    "SETUP.md"
   ],
   "scripts": {
     "shots": "node bin/iterata.mjs"
