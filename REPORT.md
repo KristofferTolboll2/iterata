@@ -1,3 +1,14 @@
+> **Historical.** This describes a CLI that iterata no longer has. The tool was
+> a Node binary with a config file, a version ledger, and flags for capture,
+> diffing, probing and gallery generation. It was stripped back to a single
+> skill file: the config surface had grown to fit one project rather than to
+> fit websites, and a screenshot rig turned out to be the wrong shape for a
+> problem whose hard part is judgement rather than measurement.
+>
+> Kept because the reasoning was worth recording, and because most of the
+> pain points below outlived the code that provoked them. See `skill/SKILL.md`
+> for what iterata actually is.
+
 # State of the tool
 
 Written 19-08-2026, at the point the pipeline was extracted from the site it

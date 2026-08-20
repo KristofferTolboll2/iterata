@@ -1,149 +1,208 @@
 ---
 name: iterata
-description: Run the design iteration loop for this project. Default mode is micro-iterations, one small visible change at a time, verified in seconds with a quick Playwright shot against the dev server and shown to the owner immediately. The heavy machinery (full screenshot rig, design review, adversarial evaluation, versioned checkpoint, gallery) runs only at checkpoints. Use when asked to iterate on the design, run the design loop, or produce new design versions.
+description: Design a web page or interface by interviewing the owner about what they want, then generating and refining versions against their answers. Opens with a short design interview, turns the answers into a brief, works through several versions critiquing its own output, and brings the owner a considered round rather than every intermediate step. Use when asked to design, redesign, iterate on, or improve the look of a site or interface.
 ---
 
-# Design iteration pipeline
+# Design iteration
 
-Two speeds. Micro-iterations are the default; checkpoints bundle them into
-reviewed, numbered versions.
+Three phases. Ask, then work, then show. The owner is interviewed once at the
+start, left alone while you iterate, and brought a finished round rather than a
+running commentary.
 
-Versions are iterata's own: `iterata` with no version reads the ledger at
-`<outDir>/manifest.json`, takes the next number, and records the run. Nothing
-here needs a VCS. If the project happens to use one, iterata notes the commit
-against each version and the guidance below on branching applies; if it does
-not, skip those lines and the loop works identically.
+There is nothing to install and nothing to configure. Everything below you do
+directly, in the project you are already in.
 
-## First run in a project
+## 1. Interview
 
-Before iterating, confirm the loop actually works here. Once, not every time.
-`SETUP.md` in the iterata repo is the long form; this is the checklist:
+Never start designing from a one-line request. Ask first, in one message, short
+enough to answer in a sitting. Six questions:
 
-1. `iterata` must resolve as a command. If it does not, install it
-   (`npm i -D github:KristofferTolboll2/iterata`) and add a `shots` script.
-2. `iterata.config.json` must exist at the project root. Copy
-   `config.example.json` and set at minimum: `themes` (list only the themes
-   the site actually has, or the rig shoots one page twice under two names),
-   `routes` (every page worth reviewing, not just the root), `hideOnFullPage`,
-   `sections`, and `themeStorageKey` (null if there is no theme switcher).
-   Read these off the code rather than assuming them.
-3. Run the full rig once and read the warnings. A `hideOnFullPage matched
-   nothing` or `section #x not found` warning means the config is describing
-   markup that no longer exists: fix it now, not after a batch of iterations
-   has been captured against it.
-4. `iterata --list` shows what has been captured here before. If the project
-   has been iterated on outside this pipeline, say so and agree a starting
-   point with the owner rather than letting the ledger start at v0.1 as
-   though nothing existed.
+1. **Who is this for, and what should they do or feel?** One or two sentences.
+2. **What world does it live in?** Ask for reference points rather than
+   adjectives: sites they like, a physical object, a material. "A printed
+   sheet" tells you more than "clean and modern".
+3. **What is fixed?** Section order, copy, brand colours, logo: anything
+   already decided that you must not touch.
+4. **What is open?** The parts they actively want changed.
+5. **How much motion?** From none, through entrance reveals, to showpieces. Ask
+   explicitly, because motion is the thing most often inherited by accident.
+6. **What would make you reject a version?** The most useful question in the
+   set. It surfaces constraints people never think to state.
 
-## Micro-iteration (the default, minutes not tens of minutes)
+Then: **"Anything else, in your own words?"** Free text catches what the
+questions did not.
 
-Hard rules for pace: NO subagents, the main session edits directly. ONE
-focused visible change per iteration (a section, a showpiece, a spacing
-pass). If a change needs more than about five minutes of work, split it.
+If the project has a `CLAUDE.md`, `DESIGN.md` or similar, read it before asking
+and ask only about what it does not cover. Do not make them repeat themselves.
+Treat any hard rule there as binding, and if the file contradicts what you see
+in the code, say so and ask which is current: a stale design document will
+steer the whole round wrong.
 
-1. Ensure the dev server is running in the background. Start it once, keep it
-   alive across iterations. If a shot does not show the change you just made,
-   suspect the server before you suspect the change: restart it and reshoot
-   rather than editing again on top of a stale frame.
-2. Make the change.
-3. `iterata <label> --quick` : one desktop full-page shot in the project's
-   primary theme, against the dev server, in seconds, saved to
-   `design-lab/quick/<label>.jpg`. Look at it.
-4. Show the owner the shot path and one or two sentences on what changed.
-   Their reaction IS the feedback loop at this speed; do not spawn review
-   agents between micro-iterations.
-5. Repeat on their direction.
+## 2. Write the brief
 
-**A still frame cannot review an animation.** Worse, it can look like a
-finished design that never existed: a shot fired mid-sequence catches one
-arbitrary frame and reports it as the page. Never call motion working on the
-strength of a screenshot.
+Turn the answers into a short brief, in the project, before designing. Ten to
+fifteen lines. It exists so you can check your own work against something
+stated rather than against your memory of a conversation.
 
-When the change is motion, measure it instead:
+It must contain a **rejection list**: the specific things that would make a
+version wrong, from question 6 and from anything fixed in question 3. That list
+is what you test against later, so write checkable statements, not sentiments.
+"Nothing important is hidden behind a click" can be checked. "Feels premium"
+cannot.
 
+Show the brief and get it confirmed before building anything. A wrong brief is
+cheap to fix now and expensive after three versions.
+
+## 3. Iterate
+
+Work in versions. A version is a coherent attempt, not a single edit.
+
+For each: build it, look at it, critique it against the brief yourself, fix
+what you find. Only then start the next. Keep going until you would be content
+to defend the result, then bring it to the owner.
+
+**Look at your own work before showing it.** Take a screenshot and actually
+read it. Most of what an owner would tell you is visible in the capture, and
+the point of iterating alone is to spend those rounds yourself instead of
+spending their attention on them.
+
+Do not narrate every version. They asked for a design, not a commentary.
+
+### Seeing what you built
+
+Use Playwright directly against the dev server. Do not build a tool for this.
+
+```js
+import { chromium } from "playwright";
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+await p.goto("http://localhost:3000", { waitUntil: "load" });
+
+// Scroll in steps so scroll-triggered reveals fire, re-reading the height each
+// time: a page that grows lazily is taller at the bottom than it was at the
+// top, and a height sampled once leaves the tail unvisited and unrevealed.
+await p.evaluate(async () => {
+  const h = () => Math.max(document.body.scrollHeight,
+                           document.documentElement.scrollHeight);
+  for (let y = 0, n = 0; y < h() - innerHeight && n < 200; n++) {
+    scrollTo(0, (y += 500));
+    await new Promise((r) => setTimeout(r, 250));
+  }
+});
+await p.waitForTimeout(2000);            // let entrance animations finish
+await p.evaluate(() => scrollTo(0, 0));
+
+// position:fixed chrome repeats down a full-page capture and composites into
+// the middle of a crop. Hide it for the shot.
+await p.evaluate(() => document.querySelectorAll("header.fixed, [data-dock]")
+  .forEach((e) => (e.style.display = "none")));
+await p.screenshot({ path: "shot.jpg", type: "jpeg", quality: 80, fullPage: true });
+await b.close();
 ```
-iterata --probe --selectors ".hero-name,.statue" --at 0,400,900,2400
+
+Then read the image. Shoot the narrow viewport too: a layout breaks there
+first, and a section that is fine at 1440px is often broken at 390px.
+
+To study one section, crop to the element rather than squinting at a tall
+page — and hide the fixed chrome for that shot too, or a dock composites into
+the middle of the crop and reads as a fault in the section.
+
+### Reviewing motion
+
+**A still cannot review an animation, and it fails in the worst way.** A shot
+fired mid-sequence catches one arbitrary frame and presents it as the design. A
+wordmark that morphs through three faces before landing photographs as a face
+no visitor ever sees.
+
+When the change is motion, measure instead of photographing. Read the DOM at
+several moments and check where things end up:
+
+```js
+console.log(await p.evaluate(() =>
+  getComputedStyle(document.querySelector(".hero")).opacity));
 ```
 
-That prints the computed style of each selector at each moment, so "ends at
-opacity 1, starts at 0, wipe finishes by 900ms" becomes something you can check
-rather than squint at. It reads the DOM, so unlike every capture in this
-pipeline it is unaffected by which frame anything happens to be on.
+"Lands at opacity 1 by 900ms" is checkable. A screenshot of it is not.
 
-A probe still cannot tell you whether motion looks good. Ask the owner to watch
-it for that. What it can do is prove the thing runs and lands where it should,
-which is what a screenshot was silently failing to do.
+Two traps. `opacity` and `transform`, the properties everyone reaches for, are
+blind to SVG geometry: a draw animates `stroke-dashoffset`, a carve animates
+`y`, a morph animates `d`, and all three read as perfectly static unless you
+ask for them. And measuring cannot tell you whether motion looks *good* — ask
+the owner to watch it for that.
 
-The default properties do not cover SVG geometry, and showpiece motion usually
-is SVG. If a probe reports nothing changed, believe the warning before you
-believe the table, and reshoot with `--props stroke-dashoffset,y,x,width,d`.
+### Comparing two versions
 
-## Checkpoint (on request, or after a coherent batch of micro-iterations)
+Do not eyeball two tall screenshots. Real changes are routinely a few
+thousandths of a percent of the pixels, invisible to a person flipping between
+images.
 
-1. The project's build and lint commands must pass.
-2. Full rig: `iterata --note "<what changed>"`. It takes the next version
-   number itself, captures the set, and writes the run to the ledger. Pass an
-   explicit version only when the owner names one.
-3. If the project uses version control, commit the source change now and say
-   which version it produced. Work on a branch rather than the default one, so
-   an exploration that goes nowhere costs nothing. iterata records the commit
-   against the version either way.
-4. OPTIONAL review pass, only when the owner asks for one or the design has
-   drifted without outside eyes: ONE subagent running a design critique
-   (findings.md, max 8 findings, scoped to the diff since the last reviewed
-   version) and ONE running an adversarial evaluation (verdict.md:
-   apply / reject / hold per finding). Cap each agent's job at review, never
-   implementation. Both depend on skills installed at the user level; if they
-   are absent, say so and skip the pass rather than improvising a substitute.
-5. `iterata --diff <previous> <this>` writes the before/after report and is
-   what you show the owner. Do not describe a checkpoint as "no visible change"
-   on the strength of looking at two full-page shots: real changes routinely
-   come to a few thousandths of a percent of the pixels, and a side effect you
-   did not intend, an element nudged by a sibling's layout, looks like nothing
-   until the diff puts the two crops next to each other.
-6. `iterata --gallery` rebuilds `<outDir>/gallery.html` from the ledger. There
-   is nothing to maintain by hand: `--note` put the description in the ledger,
-   `iterata --list` reads it back, and the gallery is generated from the same
-   record. Never hand-write that file, or two runs of this loop produce
-   differently shaped projects.
+Compare per pixel, never by an average: two glyphs appearing on a long page
+cannot move a mean, so a mean-based comparison reports "nothing changed" with
+complete confidence. Count differing pixels and report where they are.
 
-## Versioning
+Looping animation makes every capture differ and swamps the comparison. Freeze
+the endless ones first, after the page has settled so entrance animations still
+finish:
 
-- `vX.Y`, minor bump per checkpoint, held in `<outDir>/manifest.json`.
-- When the owner picks a winner, the next version is theirs to name: the first
-  accepted design is `v1.0`, later rounds `v1.1`, `v1.2`. Pass it explicitly
-  (`iterata v1.0`) since only the owner knows a round has been accepted.
-- Never renumber or delete past versions to tidy the ledger. A version that
-  was shown to someone is a thing they remember by number.
+```js
+await p.evaluate(() => {
+  for (const a of document.getAnimations()) {
+    if (a.effect?.getTiming?.().iterations !== Infinity) continue;
+    a.currentTime = 0; a.commitStyles(); a.cancel();
+  }
+});
+```
 
-## Guardrails, always
+Pausing alone does not hold: a CSS-declared animation is owned by the style
+engine, which re-syncs and undoes both a pause and a seek. This reaches CSS and
+Web Animations only. A `requestAnimationFrame` loop, which includes anime.js
+v4's core and anything painting a canvas, cannot be frozen this way. On such a
+page compare a region that excludes it, or compare by DOM instead of pixels.
 
-- **The consuming project's `CLAUDE.md` wins, verbatim.** Read it before the
-  first iteration and treat its hard rules as non-negotiable. This skill adds
-  process, never permission.
-- Copy is not the pipeline's to change. New or reworded user-facing strings
-  are proposals: mark them `// COPY PROPOSAL` where the project keeps its
-  copy, keep a running list, and never present copy as final.
-- Respect the project's stated motion policy and library split. Every
-  animation honors `prefers-reduced-motion` and falls straight to its final
-  state.
-- Section order and information architecture are fixed unless the owner opens
-  them. Within-section restructure is fair game.
+## 4. Show the owner
 
-## Gallery
+Bring a round, not a version. For each: the screenshots, a sentence on what
+changed and why, and anything you could not resolve.
 
-`iterata --gallery` writes `<outDir>/gallery.html` from the ledger: every
-version, its note, its commit where there was one, and the shots that version
-actually produced. Branch is shown per version, because a ledger spanning
-branches otherwise interleaves them under one ascending list of numbers.
+Say plainly which parts you are unsure about. An owner reviewing a design they
+did not build cannot tell a deliberate choice from an accident unless you say.
 
-Publish that file for the owner. Keep the open copy-proposal list alongside it
-in your message rather than in the file, since the ledger does not track copy.
+Then take their feedback back to phase 3. Their reaction replaces your
+self-critique on anything they comment on; keep critiquing the rest yourself.
 
-## Picking a winner
+## After a pivot, audit what you inherited
 
-When the owner names a version, capture the next major-cycle number against it
-(`iterata v1.0 --note "accepted"`) so the ledger records the decision. If the
-project uses version control, that is also when the winning branch merges.
-Copy proposals are applied only when the owner approves them, separately.
+When a round changes the visual world — new palette, new ground, new type, a
+different material altogether — the previous world's grammar survives it
+silently. Nothing breaks. Components keep working perfectly in a world they no
+longer suit, which is exactly why nobody notices.
+
+Before showing a pivot, list everything that predates it and mark each item
+*re-decided* or *inherited*:
+
+- **Motion.** Every reveal, transition and showpiece. Entrance animations
+  authored for a dark page where things emerge from the night are nonsense on a
+  printed sheet: ink does not brighten as you look at it.
+- **Disclosure.** Accordions, tabs, drawers, popovers. The most portable
+  inherited grammar of all, because it never breaks. An accordion hiding half a
+  section contradicts a page whose premise is that everything is on the sheet.
+- **Structure.** Column counts, rails, timelines, grids. A device that carried
+  meaning in the old world often just wastes width in the new one.
+- **Copy shape.** Length, rhythm, how much is asked of the reader.
+
+The failure is not that people skip this question. It is that they do not know
+motion, disclosure and column structure are the *same* question. Ask it as one.
+
+## Guardrails
+
+- **The project's `CLAUDE.md` wins, verbatim.** Read it first and treat its
+  hard rules as non-negotiable. This skill adds process, never permission.
+- **Copy is not yours to change.** New or reworded user-facing strings are
+  proposals. Mark them where the project keeps its copy, keep a running list,
+  and never present copy as final.
+- **Section order and information architecture are fixed** unless the owner
+  opened them in question 4. Restructuring within a section is fair game.
+- **Honour `prefers-reduced-motion`.** Every animation falls straight to its
+  final state. Capture that mode and look at it: it is the shot that catches a
+  reveal leaving whole sections stranded at `opacity: 0`.
+- **Do not invent facts** about the owner, their work, or their clients.
