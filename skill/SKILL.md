@@ -9,6 +9,25 @@ Two speeds. Micro-iterations are the default; checkpoints bundle them into
 reviewed, tagged versions. Everything happens on the `design-lab` branch.
 Never run this on the default branch.
 
+## First run in a project
+
+Before iterating, confirm the loop actually works here. Once, not every time:
+
+1. `iterata` must resolve as a command. If it does not, install it
+   (`npm i -D github:KristofferTolboll2/iterata`) and add a `shots` script.
+2. `iterata.config.json` must exist at the project root. Copy
+   `config.example.json` and set at minimum: `themes` (list only the themes
+   the site actually has, or the rig shoots one page twice under two names),
+   `hideOnFullPage`, `sections`, and `themeStorageKey` (null if there is no
+   theme switcher).
+3. Run the full rig once and read the warnings. A `hideOnFullPage matched
+   nothing` or `section #x not found` warning means the config is describing
+   markup that no longer exists: fix it now, not after a batch of iterations
+   has been captured against it.
+4. Check `git branch` and `git tag -l 'design/v*'`. If the project has been
+   iterated on before without this pipeline, say so and agree a starting
+   version with the owner rather than inventing one.
+
 ## Micro-iteration (the default, minutes not tens of minutes)
 
 Hard rules for pace: NO subagents, the main session edits directly. ONE
@@ -16,11 +35,13 @@ focused visible change per iteration (a section, a showpiece, a spacing
 pass). If a change needs more than about five minutes of work, split it.
 
 1. Ensure the dev server is running in the background. Start it once, keep it
-   alive across iterations.
+   alive across iterations. If a shot does not show the change you just made,
+   suspect the server before you suspect the change: restart it and reshoot
+   rather than editing again on top of a stale frame.
 2. Make the change.
-3. `iterata <label> --quick` : one dark desktop full-page shot against
-   the dev server in seconds, saved to `design-lab/quick/<label>.jpg`. Look
-   at it.
+3. `iterata <label> --quick` : one desktop full-page shot in the project's
+   primary theme, against the dev server, in seconds, saved to
+   `design-lab/quick/<label>.jpg`. Look at it.
 4. Show the owner the shot path and one or two sentences on what changed.
    Their reaction IS the feedback loop at this speed; do not spawn review
    agents between micro-iterations.
@@ -69,8 +90,9 @@ loop's largest known blind spot.
 
 ## Gallery
 
-`design-lab/gallery.html`, published for the owner. Per version: downscaled
-screenshots (desktop dark, mobile dark, light), what changed, and the open
+`design-lab/gallery.html`, published for the owner. Per version: the downscaled
+screenshots the rig actually produced for this project (which themes those are
+is the project's `themes` config, not a fixed set), what changed, and the open
 copy-proposal list. Newest last.
 
 ## Picking a winner

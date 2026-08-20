@@ -7,6 +7,10 @@
   "devUrl": "http://localhost:3000",
   "outDir": "design-lab",
 
+  "$themes": "Themes to capture, in order. The first is the primary and gets the hero shot, the section crops, the mobile shot and the reduced-motion shot; the rest get a full-page shot only. A site with one theme should list only that theme, otherwise the rig shoots the same page twice under two names. Only \"light\" and \"dark\" are accepted.",
+  "themes": ["dark", "light"],
+
+  "$themeStorageKey": "localStorage key the theme switcher reads, seeded before load so shots are deterministic. next-themes uses \"theme\". Set to null on a site with no theme switcher.",
   "themeStorageKey": "theme",
 
   "$hideOnFullPage": "CSS selectors for position:fixed elements. They repeat down a fullPage capture, so they are hidden for those shots only. A selector that matches nothing prints a warning rather than failing silently.",

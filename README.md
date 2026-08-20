@@ -28,9 +28,13 @@ npx playwright install chromium
 ```
 
 Then, in the project you are designing, copy `config.example.json` to
-`iterata.config.json` and set `hideOnFullPage` and `sections`. Every
+`iterata.config.json` and set `themes`, `hideOnFullPage` and `sections`. Every
 field has a default, so the tool also runs with no config against a plain
 Next.js app.
+
+`themes` is the one worth getting right first. It defaults to
+`["dark", "light"]`; a site with a single theme should list only that theme,
+or the rig captures the same page twice under two different names.
 
 Install the skill by copying `skill/SKILL.md` to
 `.claude/skills/iterata/SKILL.md` in the consuming project.
@@ -56,14 +60,18 @@ Output lands in `design-lab/quick/<label>.jpg` or
 
 ## What the full rig captures
 
+`<primary>` is the first entry in `themes`. With the default
+`["dark", "light"]` that is `dark`, and the last row expands to
+`desktop-light-full`.
+
 | Shot | Why |
 |---|---|
-| `desktop-dark-full` | Whole-page composition and rhythm |
-| `desktop-dark-hero` | First viewport, with fixed chrome left in |
-| `desktop-dark-<section>` | One crop per configured section id |
-| `mobile-dark-full` | Narrow-viewport layout |
-| `desktop-light-full` | The other theme |
-| `desktop-dark-reduced-motion` | Content must land in its final state |
+| `desktop-<primary>-full` | Whole-page composition and rhythm |
+| `desktop-<primary>-hero` | First viewport, with fixed chrome left in |
+| `desktop-<primary>-<section>` | One crop per configured section id |
+| `mobile-<primary>-full` | Narrow-viewport layout |
+| `desktop-<primary>-reduced-motion` | Content must land in its final state |
+| `desktop-<theme>-full` | One per remaining theme, none on a single-theme site |
 
 Fixed elements are hidden during full-page captures, because a
 `position: fixed` header repeats down the image otherwise. Theme is seeded

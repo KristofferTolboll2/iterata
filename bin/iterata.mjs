@@ -29,8 +29,16 @@ const DEFAULTS = {
   port: 4123,
   devUrl: "http://localhost:3000",
   outDir: "design-lab",
+  // Themes to capture, in order. The first is the primary: it gets the hero
+  // shot, the section crops, the mobile shot and the reduced-motion shot.
+  // Every other theme gets a full-page shot only. A single-theme site should
+  // set this to its one theme rather than shooting the same page twice under
+  // two names. Values are passed to Playwright as colorScheme, so they must be
+  // "light" or "dark".
+  themes: ["dark", "light"],
   // localStorage key the theme switcher reads, so shots are deterministic.
-  // next-themes uses "theme". null disables the seeding.
+  // next-themes uses "theme". null disables the seeding, which is what a site
+  // with no theme switcher wants.
   themeStorageKey: "theme",
   // Elements that are position:fixed repeat down a fullPage capture, so they
   // are hidden for those shots and restored afterwards.
@@ -67,13 +75,27 @@ function loadConfig(cwd) {
     console.error(`iterata.config.json is not valid JSON: ${err.message}`);
     process.exit(1);
   }
-  return {
+  const cfg = {
     ...DEFAULTS,
     ...raw,
     viewports: { ...DEFAULTS.viewports, ...(raw.viewports ?? {}) },
     timing: { ...DEFAULTS.timing, ...(raw.timing ?? {}) },
     _source: path,
   };
+
+  // themes names every capture file and is passed to Playwright as
+  // colorScheme, so a bad value fails late and quietly. Check it here.
+  if (!Array.isArray(cfg.themes) || cfg.themes.length === 0) {
+    console.error('iterata.config.json: "themes" must be a non-empty array, e.g. ["dark"]');
+    process.exit(1);
+  }
+  const bad = cfg.themes.filter((t) => t !== "light" && t !== "dark");
+  if (bad.length) {
+    console.error(`iterata.config.json: "themes" accepts only "light" and "dark", got ${bad.join(", ")}`);
+    process.exit(1);
+  }
+
+  return cfg;
 }
 
 // ------------------------------------------------------------------ args
@@ -260,10 +282,12 @@ await waitForServer();
 console.log(`capturing (config: ${cfg._source})...`);
 const browser = await chromium.launch();
 
+const [primary, ...secondary] = cfg.themes;
+
 if (quick) {
   const { context, page } = await newPage(browser, {
     ...cfg.viewports.desktop,
-    theme: "dark",
+    theme: primary,
   });
   await fullPageShot(page, version);
   await context.close();
@@ -272,11 +296,11 @@ if (quick) {
   process.exit(0);
 }
 
-// 1. Desktop dark: full page, hero viewport, and one crop per configured section.
+// 1. Desktop, primary theme: full page, hero viewport, one crop per section.
 {
-  const { context, page } = await newPage(browser, { ...cfg.viewports.desktop, theme: "dark" });
-  await fullPageShot(page, "desktop-dark-full");
-  await page.screenshot(jpg("desktop-dark-hero"));
+  const { context, page } = await newPage(browser, { ...cfg.viewports.desktop, theme: primary });
+  await fullPageShot(page, `desktop-${primary}-full`);
+  await page.screenshot(jpg(`desktop-${primary}-hero`));
   for (const id of cfg.sections) {
     const target = page.locator(`#${id}`);
     if ((await target.count()) === 0) {
@@ -285,22 +309,22 @@ if (quick) {
     }
     await target.scrollIntoViewIfNeeded();
     await page.waitForTimeout(cfg.timing.sectionSettle);
-    await target.screenshot(jpg(`desktop-dark-${id}`));
+    await target.screenshot(jpg(`desktop-${primary}-${id}`));
   }
   await context.close();
 }
 
-// 2. Mobile dark, full page.
+// 2. Mobile, primary theme, full page.
 {
-  const { context, page } = await newPage(browser, { ...cfg.viewports.mobile, theme: "dark" });
-  await fullPageShot(page, "mobile-dark-full");
+  const { context, page } = await newPage(browser, { ...cfg.viewports.mobile, theme: primary });
+  await fullPageShot(page, `mobile-${primary}-full`);
   await context.close();
 }
 
-// 3. Desktop light, full page.
-{
-  const { context, page } = await newPage(browser, { ...cfg.viewports.desktop, theme: "light" });
-  await fullPageShot(page, "desktop-light-full");
+// 3. Desktop, every other theme, full page. Empty on a single-theme site.
+for (const theme of secondary) {
+  const { context, page } = await newPage(browser, { ...cfg.viewports.desktop, theme });
+  await fullPageShot(page, `desktop-${theme}-full`);
   await context.close();
 }
 
@@ -309,10 +333,10 @@ if (quick) {
 {
   const { context, page } = await newPage(browser, {
     ...cfg.viewports.desktop,
-    theme: "dark",
+    theme: primary,
     reduce: true,
   });
-  await fullPageShot(page, "desktop-dark-reduced-motion");
+  await fullPageShot(page, `desktop-${primary}-reduced-motion`);
   await context.close();
 }
 
