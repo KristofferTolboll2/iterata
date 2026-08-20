@@ -29,8 +29,9 @@ Then a script, so the loop has a project-local entry point:
 }
 ```
 
-Check it resolves before going further. `npx iterata` with no arguments should
-print usage rather than "command not found".
+Check it resolves before going further. `npx iterata --help` should print usage
+rather than "command not found". (Bare `iterata` captures a checkpoint, so use
+`--help` when you only want to look.)
 
 ## 2. Install the skill
 
@@ -150,26 +151,42 @@ content, and the theme is the one you expected.
 
 Delete `design-lab/setup-check/` afterwards.
 
-## 5. Branch and versioning
+## 5. Versioning
 
-The loop runs on a `design-lab` branch and never on the default branch.
+iterata versions itself. `<outDir>/manifest.json` is the ledger: every run
+appends to it, and a checkpoint with no version argument takes the next number.
 
 ```bash
-git checkout -b design-lab
-git tag -l 'design/v*' | sort -V | tail -1
+iterata --note "first pass at the hero"   # -> v0.1
+iterata --note "tightened the rhythm"     # -> v0.2
+iterata v1.0 --note "accepted"            # explicit, when a round is accepted
+iterata --list                            # read the history back
 ```
 
-If the project has been iterated on before without this pipeline, do not invent
-a version number. Agree a starting point with whoever owns the design.
+```
+v0.1     2026-08-20 05:13   8 shots  a41c2f9
+         first pass at the hero
+v0.2     2026-08-20 05:14   8 shots  a41c2f9+dirty
+         tightened the rhythm
+```
 
-Add the output directory to `.gitignore`:
+`--note` is why there is no log file to maintain. The description lives with
+the run that it describes.
+
+**None of this requires version control.** iterata runs the same in a directory
+git has never seen. When the project *is* a repository, the short SHA, branch
+and dirty flag are recorded against each version, because the useful thing a
+version number points at is the code that produced it. That is a recording, not
+a requirement, and nothing fails when it is absent.
+
+If you do use git, two conventions are worth keeping: iterate on a branch
+rather than the default one, so an exploration that goes nowhere costs nothing,
+and add the output directory to `.gitignore` — screenshots are large,
+regenerable, and change on every run.
 
 ```
 design-lab
 ```
-
-Screenshots are large, regenerable, and change on every run. Publish them
-through the gallery, not through git history.
 
 ---
 
@@ -191,9 +208,9 @@ Claude edits, runs `iterata <label> --quick`, looks at the shot, and shows you
 the path. You react. That reaction is the whole feedback loop at this speed,
 which is why the skill forbids spawning review agents between iterations.
 
-**Checkpoints** bundle a coherent batch. Build and lint must pass, then it
-commits on `design-lab`, tags `design/vX.Y`, runs the full rig, and updates the
-log and gallery. Ask for one when a batch feels done, not after every change.
+**Checkpoints** bundle a coherent batch. Build and lint must pass, then the
+full rig runs, takes the next version number, records what changed, and updates
+the gallery. Ask for one when a batch feels done, not after every change.
 
 Two things to know going in:
 

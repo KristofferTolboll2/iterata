@@ -60,15 +60,34 @@ iterata hero-spacing --quick --route /da
 # Against something other than localhost:3000
 iterata hero-spacing --quick --url http://localhost:5173
 
-# Checkpoint: build, serve, capture the whole set.
-iterata v0.4
+# Checkpoint: build, serve, capture the whole set. The version is optional,
+# and comes from the ledger when omitted.
+iterata --note "tightened the section rhythm"
+
+# Or name it, when a round is accepted
+iterata v1.0 --note "accepted"
 
 # Checkpoint without rebuilding
-iterata v0.4 --skip-build
+iterata --skip-build
+
+# What has been captured here before
+iterata --list
 ```
 
 Output lands in `design-lab/quick/<label>.jpg` or
 `design-lab/<version>/screens/*.jpg`.
+
+## Versioning
+
+Versions are iterata's own, held in `<outDir>/manifest.json` beside the
+captures. A checkpoint with no version takes the next number, `--note` records
+what changed, and `iterata --list` reads the history back. There is no log file
+to keep by hand.
+
+No version control is required at any point. When the project happens to be a
+git repository the commit is recorded against each version, because the useful
+thing a version number points at is the code that produced it — but that is a
+recording, not a dependency, and iterata behaves identically without it.
 
 ## What the full rig captures
 

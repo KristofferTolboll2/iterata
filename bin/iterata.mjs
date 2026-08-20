@@ -6,16 +6,23 @@
 //   iterata <label> --quick [--url http://localhost:3000]
 //
 // Full rig (builds, serves, captures the whole set, for checkpoints):
-//   iterata <version> [--skip-build] [--port 4123]
+//   iterata [version] [--skip-build] [--port 4123] [--note "what changed"]
 //
 // Output: <outDir>/<version>/screens/*.jpg, or <outDir>/quick/<label>.jpg
+//
+// Versions are tracked in <outDir>/manifest.json and auto-increment when no
+// version is given, so the tool does not need a VCS to know what it has
+// already captured. When the project happens to be a git repository the
+// commit is recorded alongside the run, because the useful thing a version
+// points at is the code that produced it. That recording is best-effort and
+// never required: iterata runs the same in a directory git has never seen.
 //
 // Configuration comes from iterata.config.json in the working
 // directory (see config.example.json). Every field has a default, so the
 // tool runs against a plain Next.js app with no config at all.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 
@@ -133,6 +140,63 @@ function loadConfig(cwd) {
   return cfg;
 }
 
+// -------------------------------------------------------------- manifest
+
+// The version ledger. It lives beside the captures rather than in a VCS,
+// because the captures themselves are normally ignored by one: keeping the
+// artifacts in one place and their identity in another is how a run ends up
+// with a version number nothing can resolve.
+const manifestPath = (cfg) => join(cfg.outDir, "manifest.json");
+
+function readManifest(cwd, cfg) {
+  const path = resolve(cwd, manifestPath(cfg));
+  if (!existsSync(path)) return { manifestVersion: 1, runs: [] };
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    return Array.isArray(parsed?.runs) ? parsed : { manifestVersion: 1, runs: [] };
+  } catch {
+    // A corrupt ledger must not cost you a capture. Start a fresh one and say so.
+    console.warn(`warning: ${manifestPath(cfg)} is unreadable, starting a new ledger`);
+    return { manifestVersion: 1, runs: [] };
+  }
+}
+
+function writeManifest(cwd, cfg, manifest) {
+  const path = resolve(cwd, manifestPath(cfg));
+  mkdirSync(resolve(cwd, cfg.outDir), { recursive: true });
+  writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n");
+}
+
+// vX.Y, minor bump per checkpoint. Only full-rig runs get a number; quick
+// shots are scratch and keep whatever label you gave them.
+function nextVersion(manifest) {
+  const seen = manifest.runs
+    .filter((r) => r.mode === "full")
+    .map((r) => /^v(\d+)\.(\d+)$/.exec(r.version ?? ""))
+    .filter(Boolean)
+    .map((m) => [Number(m[1]), Number(m[2])]);
+  if (!seen.length) return "v0.1";
+  seen.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const [major, minor] = seen[seen.length - 1];
+  return `v${major}.${minor + 1}`;
+}
+
+// Best-effort, and silent when there is no repository. iterata does not
+// require git; it just refuses to throw away the link when git is there.
+function gitSource(cwd) {
+  const run = (...a) => {
+    const r = spawnSync("git", a, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return r.status === 0 ? r.stdout.trim() : null;
+  };
+  const sha = run("rev-parse", "--short", "HEAD");
+  if (!sha) return null;
+  return {
+    sha,
+    branch: run("rev-parse", "--abbrev-ref", "HEAD"),
+    dirty: run("status", "--porcelain") !== "",
+  };
+}
+
 // ------------------------------------------------------------------ args
 
 const args = process.argv.slice(2);
@@ -145,27 +209,67 @@ const value = (name) => {
 // Flags that consume the argument after them, so their values are not mistaken
 // for the label. Matched on position: indexOf() returns the first occurrence,
 // which drops a label identical to an earlier flag's value.
-const VALUE_FLAGS = new Set(["--url", "--port", "--config", "--route"]);
-const version = args.find((a, i) => !a.startsWith("--") && !VALUE_FLAGS.has(args[i - 1]));
+const VALUE_FLAGS = new Set(["--url", "--port", "--config", "--route", "--note"]);
+const label = args.find((a, i) => !a.startsWith("--") && !VALUE_FLAGS.has(args[i - 1]));
 
-if (!version) {
-  console.error(
-    "usage:\n" +
-      "  iterata <label> --quick [--url URL] [--route /path]  one shot, running server\n" +
-      "  iterata <version> [--skip-build] [--port N]          full rig, every configured route"
-  );
-  process.exit(1);
-}
+const USAGE =
+  "usage:\n" +
+  "  iterata <label> --quick [--url URL] [--route /path]   one shot, running server\n" +
+  "  iterata [version] [--skip-build] [--port N] [--note]  full rig, every configured route\n" +
+  "  iterata --list                                        versions captured so far\n" +
+  "\n" +
+  "The version is optional: omitted, the next one is taken from the ledger at\n" +
+  "<outDir>/manifest.json. --note records what changed, so the history is\n" +
+  "readable without keeping a log by hand.";
 
 const cwd = process.cwd();
 const cfg = loadConfig(cwd);
 const quick = flag("quick");
 const skipBuild = flag("skip-build");
+const note = value("note");
+
+// Bare `iterata` now captures a checkpoint rather than printing usage, so help
+// needs its own flag: nobody should trigger a production build by asking what
+// the arguments are.
+if (flag("help") || args.includes("-h")) {
+  console.log(USAGE);
+  process.exit(0);
+}
+
+// --list answers from the ledger alone: no browser, no server, no build.
+if (flag("list")) {
+  const { runs } = readManifest(cwd, cfg);
+  const full = runs.filter((r) => r.mode === "full");
+  if (!full.length) {
+    console.log(`no versions captured yet (ledger: ${manifestPath(cfg)})`);
+    process.exit(0);
+  }
+  for (const r of full) {
+    const when = r.createdAt?.slice(0, 16).replace("T", " ") ?? "";
+    const src = r.source ? ` ${r.source.sha}${r.source.dirty ? "+dirty" : ""}` : "";
+    console.log(`${r.version.padEnd(8)} ${when}  ${String(r.shots?.length ?? 0).padStart(2)} shots${src}`);
+    if (r.note) console.log(`         ${r.note}`);
+  }
+  process.exit(0);
+}
+
+// Quick mode names a scratch file, so it needs a label from you. The full rig
+// numbers itself.
+if (quick && !label) {
+  console.error("a quick shot needs a label, e.g. `iterata hero-spacing --quick`\n\n" + USAGE);
+  process.exit(1);
+}
+
+const manifest = readManifest(cwd, cfg);
+const version = quick ? label : (label ?? nextVersion(manifest));
+
 const port = Number(value("port")) || cfg.port;
 const baseUrl = quick ? (value("url") ?? cfg.devUrl) : `http://localhost:${port}`;
 const outDir = quick
   ? join(cfg.outDir, "quick")
   : join(cfg.outDir, version, "screens");
+
+if (!quick && !label) console.log(`version ${version} (auto, from ${manifestPath(cfg)})`);
 
 mkdirSync(resolve(cwd, outDir), { recursive: true });
 
@@ -288,11 +392,28 @@ async function newPage(browser, { width, height, theme, route, reduce = false })
 // filenames they had before routes existed.
 const shot = (route, name) => (route.slug ? `${route.slug}-${name}` : name);
 
-const jpg = (name) => ({
-  path: join(outDir, `${name}.jpg`),
-  type: "jpeg",
-  quality: cfg.jpegQuality,
-});
+// Every capture registers itself, so the ledger records what was actually
+// written rather than what the code intended to write.
+const captured = [];
+const jpg = (name) => {
+  captured.push(`${name}.jpg`);
+  return { path: join(outDir, `${name}.jpg`), type: "jpeg", quality: cfg.jpegQuality };
+};
+
+function record(mode) {
+  manifest.runs.push({
+    version,
+    mode,
+    createdAt: new Date().toISOString(),
+    outDir,
+    shots: captured,
+    routes: cfg.routes.map((r) => r.path),
+    themes: cfg.themes,
+    ...(note ? { note } : {}),
+    source: gitSource(cwd),
+  });
+  writeManifest(cwd, cfg, manifest);
+}
 
 // Returns the number of elements actually matched, so a stale selector after
 // a markup change is reported instead of silently producing a capture with
@@ -348,6 +469,7 @@ if (quick) {
   await fullPageShot(page, version);
   await context.close();
   await browser.close();
+  record("quick");
   console.log(`done: ${join(outDir, `${version}.jpg`)}`);
   process.exit(0);
 }
@@ -415,5 +537,6 @@ for (const route of cfg.routes) {
 
 await browser.close();
 stopServer();
+record("full");
 console.log(`done: ${outDir}`);
 process.exit(0);
