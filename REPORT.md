@@ -101,9 +101,13 @@ real device.
 **3. `settle()` is fixed-timing guesswork.** It scrolls in 500px steps with a
 250ms pause, waits a flat two seconds, scrolls back and waits 600ms more. It
 has no idea whether animations have finished. Slower than necessary on static
-pages, and captures mid-flight on anything longer than two seconds. It also
-still calls a load-state wait that means nothing on a page with a canvas that
-never stops painting.
+pages, and captures mid-flight on anything longer than two seconds. The
+distance half of this was worse and is now fixed: the walk used to sample
+`document.body.scrollHeight` once before the loop, so a page that grew as it
+was scrolled had its tail never visited and its reveals never fired — a
+confident capture of a page that only looks broken. The height is now re-read
+each iteration and the walk is bounded by `maxScrollPasses`, but the waiting is
+still a guess.
 
 **4. No visual diff.** Comparing two versions means opening two JPEGs and
 eyeballing them. Nothing surfaces "this moved four pixels". Pixel diffing is

@@ -41,10 +41,19 @@ const DEFAULTS = {
     desktop: { width: 1440, height: 900 },
     mobile: { width: 390, height: 844 },
   },
-  // Milliseconds. scrollStep drives how patiently the page is scrolled so
-  // every scroll-triggered reveal fires; settleAfter waits out entrance
-  // animations and counters before the shutter.
-  timing: { scrollStep: 250, settleAfter: 2000, afterScrollTop: 600, sectionSettle: 400 },
+  // scrollStep is in pixels, every other field is milliseconds. The page is
+  // walked down in scrollStep-sized jumps, pausing scrollPause at each one so
+  // scroll-triggered reveals fire; settleAfter then waits out entrance
+  // animations and counters before the shutter. maxScrollPasses bounds the
+  // walk so an infinite-scroll page cannot spin forever.
+  timing: {
+    scrollStep: 500,
+    scrollPause: 250,
+    maxScrollPasses: 200,
+    settleAfter: 2000,
+    afterScrollTop: 600,
+    sectionSettle: 400,
+  },
   jpegQuality: 80,
 };
 
@@ -71,9 +80,16 @@ function loadConfig(cwd) {
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
-const value = (name) => (flag(name) ? args[args.indexOf(`--${name}`) + 1] : null);
+const value = (name) => {
+  const i = args.indexOf(`--${name}`);
+  return i === -1 ? null : args[i + 1] ?? null;
+};
 
-const version = args.find((a) => !a.startsWith("--") && args[args.indexOf(a) - 1] !== "--url" && args[args.indexOf(a) - 1] !== "--port" && args[args.indexOf(a) - 1] !== "--config");
+// Flags that consume the argument after them, so their values are not mistaken
+// for the label. Matched on position: indexOf() returns the first occurrence,
+// which drops a label identical to an earlier flag's value.
+const VALUE_FLAGS = new Set(["--url", "--port", "--config"]);
+const version = args.find((a, i) => !a.startsWith("--") && !VALUE_FLAGS.has(args[i - 1]));
 
 if (!version) {
   console.error(
@@ -137,20 +153,46 @@ async function waitForServer() {
 // Scroll to the bottom in steps so every scroll-triggered reveal fires, wait
 // for entrance timelines and counters to finish, then return to the top.
 //
-// KNOWN WEAKNESS: this is fixed-timing, not a real signal. A page with an
-// animation longer than settleAfter is captured mid-flight, and a static
+// The height is re-read every iteration: a page that grows as it is scrolled
+// (lazy sections, infinite feeds) is taller at the bottom than it was at the
+// top, and a height sampled once leaves the tail unvisited and unrevealed.
+//
+// KNOWN WEAKNESS: the waiting is fixed-timing, not a real signal. A page with
+// an animation longer than settleAfter is captured mid-flight, and a static
 // page pays the full wait for nothing. See REPORT.md.
 async function settle(page, timing) {
   await page.waitForLoadState("load");
-  await page.evaluate(async (step) => {
-    let y = 0;
-    const max = document.body.scrollHeight;
-    while (y < max) {
-      y += 500;
-      window.scrollTo(0, y);
-      await new Promise((r) => setTimeout(r, step));
-    }
-  }, timing.scrollStep);
+
+  const walk = await page.evaluate(
+    async ({ step, pause, maxPasses }) => {
+      // The scroller is html on most pages and body on a few; take whichever
+      // reports the taller document so neither layout under-scrolls.
+      const height = () =>
+        Math.max(
+          document.scrollingElement?.scrollHeight ?? 0,
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight,
+        );
+
+      let y = 0;
+      let passes = 0;
+      while (y < height() - window.innerHeight && passes < maxPasses) {
+        y += step;
+        window.scrollTo(0, y);
+        passes += 1;
+        await new Promise((r) => setTimeout(r, pause));
+      }
+      return { reached: y, height: height(), capped: passes >= maxPasses };
+    },
+    { step: timing.scrollStep, pause: timing.scrollPause, maxPasses: timing.maxScrollPasses },
+  );
+
+  if (walk.capped) {
+    console.warn(
+      `  ! scroll walk hit maxScrollPasses (${timing.maxScrollPasses}) at ${walk.reached}px of ${walk.height}px — the tail of this page was never scrolled into view`,
+    );
+  }
+
   await page.waitForTimeout(timing.settleAfter);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(timing.afterScrollTop);

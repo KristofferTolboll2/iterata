@@ -20,8 +20,11 @@
     "mobile": { "width": 390, "height": 844 }
   },
 
+  "$timing": "scrollStep is in pixels, everything else in milliseconds. maxScrollPasses bounds the scroll walk so an infinite-scroll page cannot spin forever; iterata warns when it hits the cap.",
   "timing": {
-    "scrollStep": 250,
+    "scrollStep": 500,
+    "scrollPause": 250,
+    "maxScrollPasses": 200,
     "settleAfter": 2000,
     "afterScrollTop": 600,
     "sectionSettle": 400
