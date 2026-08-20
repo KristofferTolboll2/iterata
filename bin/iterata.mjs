@@ -226,6 +226,7 @@ const USAGE =
   "  iterata <label> --quick [--url URL] [--route /path]   one shot, running server\n" +
   "  iterata [version] [--skip-build] [--port N] [--note]  full rig, every configured route\n" +
   "  iterata --list                                        versions captured so far\n" +
+  "  iterata --gallery                                     build <outDir>/gallery.html\n" +
   "\n" +
   "The version is optional: omitted, the next one is taken from the ledger at\n" +
   "<outDir>/manifest.json. --note records what changed, so the history is\n" +
@@ -237,11 +238,78 @@ const quick = flag("quick");
 const skipBuild = flag("skip-build");
 const note = value("note");
 
+// The skill's checkpoint step asks for a gallery. The ledger already holds
+// everything one needs, so build it from there rather than leaving each run to
+// hand-roll an HTML file and produce a differently shaped project every time.
+function writeGallery(cwd, cfg) {
+  const { runs } = readManifest(cwd, cfg);
+  const full = runs.filter((r) => r.mode === "full");
+  if (!full.length) {
+    console.error(`nothing to build a gallery from yet (ledger: ${manifestPath(cfg)})`);
+    process.exit(1);
+  }
+  const esc = (t) =>
+    String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  // Relative to the gallery file, which sits at the root of outDir.
+  const rel = (run, shot) => `${run.outDir.split("/").slice(1).join("/")}/${shot}`;
+
+  const sections = full
+    .map((r) => {
+      // Branch is surfaced per version: a ledger spanning branches would
+      // otherwise interleave them under one ascending list of numbers.
+      const src = r.source
+        ? `${esc(r.source.sha)}${r.source.dirty ? " +dirty" : ""}${r.source.branch ? ` &middot; ${esc(r.source.branch)}` : ""}`
+        : "no repository";
+      const shots = (r.shots ?? [])
+        .map(
+          (sh) =>
+            `<figure><a href="${esc(rel(r, sh))}"><img loading="lazy" src="${esc(rel(r, sh))}" alt="${esc(sh)}"></a><figcaption>${esc(sh)}</figcaption></figure>`
+        )
+        .join("");
+      return `<section><h2>${esc(r.version)}</h2><p class="meta">${esc(r.createdAt?.slice(0, 16).replace("T", " ") ?? "")} &middot; ${src}</p>${r.note ? `<p class="note">${esc(r.note)}</p>` : ""}<div class="grid">${shots}</div></section>`;
+    })
+    .join("");
+
+  const html = `<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Design versions</title>
+<style>
+  :root{color-scheme:light dark;--bg:#fff;--fg:#111;--dim:#666;--line:#e5e5e5}
+  @media (prefers-color-scheme:dark){:root{--bg:#111;--fg:#eee;--dim:#999;--line:#333}}
+  body{margin:0;padding:2rem 1.5rem;background:var(--bg);color:var(--fg);
+    font:16px/1.5 system-ui,sans-serif;max-width:1200px;margin-inline:auto}
+  h1{font-size:1.5rem;margin:0 0 2rem}
+  section{border-top:1px solid var(--line);padding:2rem 0}
+  h2{font-size:1.25rem;margin:0 0 .25rem}
+  .meta{margin:0;color:var(--dim);font:13px ui-monospace,monospace}
+  .note{margin:.5rem 0 0;max-width:60ch}
+  .grid{display:grid;gap:1rem;margin-top:1.5rem;
+    grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+  figure{margin:0}
+  img{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:4px}
+  figcaption{margin-top:.4rem;color:var(--dim);font:12px ui-monospace,monospace;
+    overflow-wrap:anywhere}
+</style>
+<h1>Design versions</h1>
+${sections}
+`;
+  const out = join(cfg.outDir, "gallery.html");
+  writeFileSync(resolve(cwd, out), html);
+  console.log(`wrote ${out} (${full.length} version${full.length === 1 ? "" : "s"})`);
+}
+
 // Bare `iterata` now captures a checkpoint rather than printing usage, so help
 // needs its own flag: nobody should trigger a production build by asking what
 // the arguments are.
 if (flag("help") || args.includes("-h")) {
   console.log(USAGE);
+  process.exit(0);
+}
+
+if (flag("gallery")) {
+  writeGallery(cwd, cfg);
   process.exit(0);
 }
 

@@ -72,6 +72,9 @@ iterata --skip-build
 
 # What has been captured here before
 iterata --list
+
+# Build <outDir>/gallery.html from the ledger
+iterata --gallery
 ```
 
 Output lands in `design-lab/quick/<label>.jpg` or

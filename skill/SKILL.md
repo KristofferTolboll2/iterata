@@ -77,8 +77,11 @@ loop's largest known blind spot.
    apply / reject / hold per finding). Cap each agent's job at review, never
    implementation. Both depend on skills installed at the user level; if they
    are absent, say so and skip the pass rather than improvising a substitute.
-5. Update the gallery. There is no log to maintain by hand: `--note` put the
-   description in the ledger, and `iterata --list` reads it back.
+5. `iterata --gallery` rebuilds `<outDir>/gallery.html` from the ledger. There
+   is nothing to maintain by hand: `--note` put the description in the ledger,
+   `iterata --list` reads it back, and the gallery is generated from the same
+   record. Never hand-write that file, or two runs of this loop produce
+   differently shaped projects.
 
 ## Versioning
 
@@ -105,10 +108,13 @@ loop's largest known blind spot.
 
 ## Gallery
 
-`design-lab/gallery.html`, published for the owner. Per version: the downscaled
-screenshots the rig actually produced for this project (which themes those are
-is the project's `themes` config, not a fixed set), what changed, and the open
-copy-proposal list. Newest last.
+`iterata --gallery` writes `<outDir>/gallery.html` from the ledger: every
+version, its note, its commit where there was one, and the shots that version
+actually produced. Branch is shown per version, because a ledger spanning
+branches otherwise interleaves them under one ascending list of numbers.
+
+Publish that file for the owner. Keep the open copy-proposal list alongside it
+in your message rather than in the file, since the ledger does not track copy.
 
 ## Picking a winner
 
