@@ -29,6 +29,11 @@ const DEFAULTS = {
   port: 4123,
   devUrl: "http://localhost:3000",
   outDir: "design-lab",
+  // Routes to capture, each crossed with the theme set below. A localised or
+  // multi-page site lists every route worth reviewing; the default captures
+  // the root only. Entries are either a path string or { path, name }, where
+  // name overrides the slug that goes into the filename.
+  routes: ["/"],
   // Themes to capture, in order. The first is the primary: it gets the hero
   // shot, the section crops, the mobile shot and the reduced-motion shot.
   // Every other theme gets a full-page shot only. A single-theme site should
@@ -83,6 +88,36 @@ function loadConfig(cwd) {
     _source: path,
   };
 
+  // routes is normalised to { path, slug } here so the capture loop never has
+  // to care which of the two shapes the config used. The root route gets an
+  // empty slug, which keeps single-route filenames exactly as they were
+  // before routes existed.
+  if (!Array.isArray(cfg.routes) || cfg.routes.length === 0) {
+    console.error('iterata.config.json: "routes" must be a non-empty array, e.g. ["/"]');
+    process.exit(1);
+  }
+  cfg.routes = cfg.routes.map((entry) => {
+    const path = typeof entry === "string" ? entry : entry?.path;
+    if (typeof path !== "string" || !path.startsWith("/")) {
+      console.error(
+        `iterata.config.json: every route needs a path starting with "/", got ${JSON.stringify(entry)}`
+      );
+      process.exit(1);
+    }
+    const name = typeof entry === "object" && entry !== null ? entry.name : undefined;
+    const slug = name ?? path.replace(/^\/+|\/+$/g, "").replace(/[^a-zA-Z0-9]+/g, "-");
+    return { path, slug };
+  });
+  const slugs = cfg.routes.map((r) => r.slug);
+  const dupe = slugs.find((slug, i) => slugs.indexOf(slug) !== i);
+  if (dupe !== undefined) {
+    console.error(
+      `iterata.config.json: two routes produce the slug "${dupe}", so their captures would overwrite each other. ` +
+        `Give one of them an explicit { "path": "...", "name": "..." }.`
+    );
+    process.exit(1);
+  }
+
   // themes names every capture file and is passed to Playwright as
   // colorScheme, so a bad value fails late and quietly. Check it here.
   if (!Array.isArray(cfg.themes) || cfg.themes.length === 0) {
@@ -110,14 +145,14 @@ const value = (name) => {
 // Flags that consume the argument after them, so their values are not mistaken
 // for the label. Matched on position: indexOf() returns the first occurrence,
 // which drops a label identical to an earlier flag's value.
-const VALUE_FLAGS = new Set(["--url", "--port", "--config"]);
+const VALUE_FLAGS = new Set(["--url", "--port", "--config", "--route"]);
 const version = args.find((a, i) => !a.startsWith("--") && !VALUE_FLAGS.has(args[i - 1]));
 
 if (!version) {
   console.error(
     "usage:\n" +
-      "  iterata <label> --quick [--url URL]     one shot, running server\n" +
-      "  iterata <version> [--skip-build] [--port N]  full rig"
+      "  iterata <label> --quick [--url URL] [--route /path]  one shot, running server\n" +
+      "  iterata <version> [--skip-build] [--port N]          full rig, every configured route"
   );
   process.exit(1);
 }
@@ -220,7 +255,11 @@ async function settle(page, timing) {
   await page.waitForTimeout(timing.afterScrollTop);
 }
 
-async function newPage(browser, { width, height, theme, reduce = false }) {
+// Resolved against the origin, so a devUrl that already carries a path or a
+// trailing slash does not produce a double slash or swallow the route.
+const urlFor = (route) => new URL(route.path, baseUrl).href;
+
+async function newPage(browser, { width, height, theme, route, reduce = false }) {
   const context = await browser.newContext({
     viewport: { width, height },
     colorScheme: theme,
@@ -234,10 +273,20 @@ async function newPage(browser, { width, height, theme, reduce = false }) {
     );
   }
   const page = await context.newPage();
-  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  const res = await page.goto(urlFor(route), { waitUntil: "domcontentloaded" });
+  // A 404 on a mistyped route still screenshots happily, and the result looks
+  // like a design regression rather than a config error. Say so instead.
+  if (res && !res.ok()) {
+    console.warn(`  ! ${urlFor(route)} responded ${res.status()} — the capture below is that response, not the page`);
+  }
   await settle(page, cfg.timing);
   return { context, page };
 }
+
+// Route slug goes in front so a multi-route set groups by route when listed.
+// The root route has an empty slug, so single-route projects keep the exact
+// filenames they had before routes existed.
+const shot = (route, name) => (route.slug ? `${route.slug}-${name}` : name);
 
 const jpg = (name) => ({
   path: join(outDir, `${name}.jpg`),
@@ -285,9 +334,16 @@ const browser = await chromium.launch();
 const [primary, ...secondary] = cfg.themes;
 
 if (quick) {
+  // Quick mode stays a single shot no matter how many routes are configured,
+  // because its whole point is a few seconds. --route picks a different one.
+  const wanted = value("route");
+  const route = wanted
+    ? cfg.routes.find((r) => r.path === wanted) ?? { path: wanted, slug: "" }
+    : cfg.routes[0];
   const { context, page } = await newPage(browser, {
     ...cfg.viewports.desktop,
     theme: primary,
+    route,
   });
   await fullPageShot(page, version);
   await context.close();
@@ -296,48 +352,65 @@ if (quick) {
   process.exit(0);
 }
 
-// 1. Desktop, primary theme: full page, hero viewport, one crop per section.
-{
-  const { context, page } = await newPage(browser, { ...cfg.viewports.desktop, theme: primary });
-  await fullPageShot(page, `desktop-${primary}-full`);
-  await page.screenshot(jpg(`desktop-${primary}-hero`));
-  for (const id of cfg.sections) {
-    const target = page.locator(`#${id}`);
-    if ((await target.count()) === 0) {
-      console.warn(`warning: section #${id} not found, skipping crop`);
-      continue;
+for (const route of cfg.routes) {
+  if (route.slug) console.log(`  route ${route.path}`);
+
+  // 1. Desktop, primary theme: full page, hero viewport, one crop per section.
+  {
+    const { context, page } = await newPage(browser, {
+      ...cfg.viewports.desktop,
+      theme: primary,
+      route,
+    });
+    await fullPageShot(page, shot(route, `desktop-${primary}-full`));
+    await page.screenshot(jpg(shot(route, `desktop-${primary}-hero`)));
+    for (const id of cfg.sections) {
+      const target = page.locator(`#${id}`);
+      if ((await target.count()) === 0) {
+        console.warn(`warning: section #${id} not found on ${route.path}, skipping crop`);
+        continue;
+      }
+      await target.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(cfg.timing.sectionSettle);
+      await target.screenshot(jpg(shot(route, `desktop-${primary}-${id}`)));
     }
-    await target.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(cfg.timing.sectionSettle);
-    await target.screenshot(jpg(`desktop-${primary}-${id}`));
+    await context.close();
   }
-  await context.close();
-}
 
-// 2. Mobile, primary theme, full page.
-{
-  const { context, page } = await newPage(browser, { ...cfg.viewports.mobile, theme: primary });
-  await fullPageShot(page, `mobile-${primary}-full`);
-  await context.close();
-}
+  // 2. Mobile, primary theme, full page.
+  {
+    const { context, page } = await newPage(browser, {
+      ...cfg.viewports.mobile,
+      theme: primary,
+      route,
+    });
+    await fullPageShot(page, shot(route, `mobile-${primary}-full`));
+    await context.close();
+  }
 
-// 3. Desktop, every other theme, full page. Empty on a single-theme site.
-for (const theme of secondary) {
-  const { context, page } = await newPage(browser, { ...cfg.viewports.desktop, theme });
-  await fullPageShot(page, `desktop-${theme}-full`);
-  await context.close();
-}
+  // 3. Desktop, every other theme, full page. Empty on a single-theme site.
+  for (const theme of secondary) {
+    const { context, page } = await newPage(browser, {
+      ...cfg.viewports.desktop,
+      theme,
+      route,
+    });
+    await fullPageShot(page, shot(route, `desktop-${theme}-full`));
+    await context.close();
+  }
 
-// 4. Reduced motion: content must land in its final state with no animation.
-//    Captured only. Nothing asserts it, a human still compares. See REPORT.md.
-{
-  const { context, page } = await newPage(browser, {
-    ...cfg.viewports.desktop,
-    theme: primary,
-    reduce: true,
-  });
-  await fullPageShot(page, `desktop-${primary}-reduced-motion`);
-  await context.close();
+  // 4. Reduced motion: content must land in its final state with no animation.
+  //    Captured only. Nothing asserts it, a human still compares. See REPORT.md.
+  {
+    const { context, page } = await newPage(browser, {
+      ...cfg.viewports.desktop,
+      theme: primary,
+      route,
+      reduce: true,
+    });
+    await fullPageShot(page, shot(route, `desktop-${primary}-reduced-motion`));
+    await context.close();
+  }
 }
 
 await browser.close();

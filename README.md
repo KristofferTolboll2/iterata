@@ -36,14 +36,26 @@ Next.js app.
 `["dark", "light"]`; a site with a single theme should list only that theme,
 or the rig captures the same page twice under two different names.
 
+`routes` defaults to `["/"]`. A project with more than one page worth
+reviewing lists them all, and the full rig captures every route crossed with
+every theme.
+
 Install the skill by copying `skill/SKILL.md` to
 `.claude/skills/iterata/SKILL.md` in the consuming project.
+
+[SETUP.md](SETUP.md) walks the whole thing end to end: which config fields are
+worth deciding rather than defaulting, how to tell a good first run from a
+broken one, and how the loop is meant to be worked day to day. Hand it to
+Claude and let it do the setup.
 
 ## Use
 
 ```bash
 # Micro-iteration: one shot against a running dev server, seconds.
 iterata hero-spacing --quick
+
+# A route other than the first configured one
+iterata hero-spacing --quick --route /da
 
 # Against something other than localhost:3000
 iterata hero-spacing --quick --url http://localhost:5173
@@ -63,6 +75,10 @@ Output lands in `design-lab/quick/<label>.jpg` or
 `<primary>` is the first entry in `themes`. With the default
 `["dark", "light"]` that is `dark`, and the last row expands to
 `desktop-light-full`.
+
+Every row is captured once per configured route. Non-root routes prefix their
+slug (`da-desktop-dark-full.jpg`); the root route does not, so a single-route
+project sees the names below unchanged.
 
 | Shot | Why |
 |---|---|

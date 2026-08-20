@@ -7,6 +7,9 @@
   "devUrl": "http://localhost:3000",
   "outDir": "design-lab",
 
+  "$routes": "Routes to capture, each crossed with every theme. Defaults to [\"/\"]. An entry is a path string, or { \"path\": \"/x\", \"name\": \"slug\" } when you want to name the capture files yourself. The root route contributes no prefix, so a single-route project gets the same filenames it always had; every other route prefixes its slug, e.g. da-desktop-dark-full.jpg.",
+  "routes": ["/"],
+
   "$themes": "Themes to capture, in order. The first is the primary and gets the hero shot, the section crops, the mobile shot and the reduced-motion shot; the rest get a full-page shot only. A site with one theme should list only that theme, otherwise the rig shoots the same page twice under two names. Only \"light\" and \"dark\" are accepted.",
   "themes": ["dark", "light"],
 

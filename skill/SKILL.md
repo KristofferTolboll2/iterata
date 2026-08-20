@@ -11,15 +11,17 @@ Never run this on the default branch.
 
 ## First run in a project
 
-Before iterating, confirm the loop actually works here. Once, not every time:
+Before iterating, confirm the loop actually works here. Once, not every time.
+`SETUP.md` in the iterata repo is the long form; this is the checklist:
 
 1. `iterata` must resolve as a command. If it does not, install it
    (`npm i -D github:KristofferTolboll2/iterata`) and add a `shots` script.
 2. `iterata.config.json` must exist at the project root. Copy
    `config.example.json` and set at minimum: `themes` (list only the themes
    the site actually has, or the rig shoots one page twice under two names),
-   `hideOnFullPage`, `sections`, and `themeStorageKey` (null if there is no
-   theme switcher).
+   `routes` (every page worth reviewing, not just the root), `hideOnFullPage`,
+   `sections`, and `themeStorageKey` (null if there is no theme switcher).
+   Read these off the code rather than assuming them.
 3. Run the full rig once and read the warnings. A `hideOnFullPage matched
    nothing` or `section #x not found` warning means the config is describing
    markup that no longer exists: fix it now, not after a batch of iterations
