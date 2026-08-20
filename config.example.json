@@ -19,6 +19,9 @@
   "$hideOnFullPage": "CSS selectors for position:fixed elements. They repeat down a fullPage capture, so they are hidden for those shots only. A selector that matches nothing prints a warning rather than failing silently.",
   "hideOnFullPage": ["[data-dock]", "header.fixed"],
 
+  "$hideOnSection": "Selectors hidden during section crops. Defaults to hideOnFullPage when omitted. Fixed chrome does not repeat in a crop, it composites into the middle of the frame, so a crop can look like a design regression when nothing is wrong. Set this separately when a crop must hide something a whole page can keep, such as a footer scrim.",
+  "hideOnSection": null,
+
   "$sections": "Element ids captured as individual crops during the full rig.",
   "sections": ["about", "work", "contact"],
 

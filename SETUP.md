@@ -110,6 +110,11 @@ grep -rn "fixed" src/components/*.tsx | grep -i "nav\|header\|dock\|bar"
 A selector that matches nothing prints a warning on every run. That warning is
 the point — it is how you find out a class name changed.
 
+`hideOnSection` covers the same problem for section crops and defaults to
+`hideOnFullPage`. It is worth setting separately when something belongs at the
+foot of a whole page but ruins a crop: a bottom scrim renders correctly once at
+the end of a full page, and washes out the bottom of every crop it overlaps.
+
 ### `sections`
 
 Element ids captured as individual crops. These are the parts of the page you

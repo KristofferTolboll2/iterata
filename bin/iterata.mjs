@@ -55,6 +55,13 @@ const DEFAULTS = {
   // Elements that are position:fixed repeat down a fullPage capture, so they
   // are hidden for those shots and restored afterwards.
   hideOnFullPage: [],
+  // The same problem is worse for a section crop: fixed chrome does not repeat
+  // there, it composites straight into the middle of the frame, and a crop that
+  // silently contains the dock or a bottom scrim reads as a design regression
+  // rather than an artifact. null means reuse hideOnFullPage; set it when a
+  // crop needs to hide something a full page can keep, such as a footer scrim
+  // that sits correctly at the foot of a whole page but washes out a band.
+  hideOnSection: null,
   // Section ids captured as individual crops during the full rig.
   sections: [],
   viewports: {
@@ -115,6 +122,8 @@ function loadConfig(cwd) {
     const slug = name ?? path.replace(/^\/+|\/+$/g, "").replace(/[^a-zA-Z0-9]+/g, "-");
     return { path, slug };
   });
+  if (cfg.hideOnSection == null) cfg.hideOnSection = cfg.hideOnFullPage;
+
   const slugs = cfg.routes.map((r) => r.slug);
   const dupe = slugs.find((slug, i) => slugs.indexOf(slug) !== i);
   if (dupe !== undefined) {
@@ -445,6 +454,21 @@ async function fullPageShot(page, name) {
   await setFixedDisplay(page, cfg.hideOnFullPage, "");
 }
 
+// Crops used to shoot straight through whatever fixed chrome happened to sit
+// over the element, so a dock or a scrim landed in the middle of the frame and
+// read as a fault in the section.
+async function sectionShot(target, page, name) {
+  const hidden = await setFixedDisplay(page, cfg.hideOnSection, "none");
+  if (cfg.hideOnSection.length && hidden === 0) {
+    console.warn(
+      `warning: hideOnSection matched nothing (${cfg.hideOnSection.join(", ")}). ` +
+        `Fixed elements may sit over ${name}.jpg.`
+    );
+  }
+  await target.screenshot(jpg(name));
+  await setFixedDisplay(page, cfg.hideOnSection, "");
+}
+
 // ------------------------------------------------------------------ main
 
 if (!quick) startServer();
@@ -494,7 +518,7 @@ for (const route of cfg.routes) {
       }
       await target.scrollIntoViewIfNeeded();
       await page.waitForTimeout(cfg.timing.sectionSettle);
-      await target.screenshot(jpg(shot(route, `desktop-${primary}-${id}`)));
+      await sectionShot(target, page, shot(route, `desktop-${primary}-${id}`));
     }
     await context.close();
   }
