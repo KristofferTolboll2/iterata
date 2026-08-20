@@ -75,6 +75,10 @@ A probe still cannot tell you whether motion looks good. Ask the owner to watch
 it for that. What it can do is prove the thing runs and lands where it should,
 which is what a screenshot was silently failing to do.
 
+The default properties do not cover SVG geometry, and showpiece motion usually
+is SVG. If a probe reports nothing changed, believe the warning before you
+believe the table, and reshoot with `--props stroke-dashoffset,y,x,width,d`.
+
 ## Checkpoint (on request, or after a coherent batch of micro-iterations)
 
 1. The project's build and lint commands must pass.

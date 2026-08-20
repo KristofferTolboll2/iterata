@@ -115,6 +115,21 @@ rather than silently omitted.
 It cannot tell you whether the motion looks good. It can tell you it runs and
 where it ends.
 
+The default properties are `opacity`, `transform`, `visibility` and `display`,
+which are blind to SVG geometry. A draw animates `stroke-dashoffset`, a carve
+animates `y`, a morph animates `d`, and under the defaults all three report as
+perfectly static. Because showpiece work is overwhelmingly SVG, that is the
+default question being blind on the category most worth reviewing, so when a
+selector matched and nothing moved, the probe says so rather than letting the
+table read as a result:
+
+```
+warning: no sampled property changed for [data-wipe].
+  That is not the same as "does not animate": the motion may be driving a
+  property you did not request. SVG geometry is the usual culprit, so try
+  --props stroke-dashoffset,y,x,width,height,d,r,cx,cy
+```
+
 ## Comparing versions
 
 `iterata --diff <a> <b>` writes a report showing what actually changed between

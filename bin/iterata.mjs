@@ -320,6 +320,33 @@ async function runProbe(cwd, cfg, label, selectors, times, props, url) {
   const missing = [...new Set(samples.flatMap((s) => s.values.filter((v) => v.missing).map((v) => v.sel)))];
   if (missing.length) console.warn(`\nwarning: matched no element: ${missing.join(", ")}`);
 
+  // The same failure wearing different clothes. An element whose sampled
+  // properties never move reads as "this does not animate", and that is wrong
+  // whenever the motion is driving a property nobody asked for. SVG geometry
+  // is the common case: a draw animates stroke-dashoffset, a carve animates y,
+  // a morph animates d, and none of those are in the default set. Showpiece
+  // work is overwhelmingly SVG, so the default question is blind on exactly
+  // the category this is for.
+  if (times.length > 1) {
+    const flat = selectors.filter((sel) => !missing.includes(sel));
+    const stuck = flat.filter((sel) =>
+      props.every((prop) => {
+        const seen = new Set(
+          samples.map((s) => s.values.find((v) => v.sel === sel)?.[prop]).filter((v) => v !== undefined),
+        );
+        return seen.size <= 1;
+      }),
+    );
+    if (stuck.length) {
+      console.warn(
+        `\nwarning: no sampled property changed for ${stuck.join(", ")}.\n` +
+          `  That is not the same as "does not animate": the motion may be driving a\n` +
+          `  property you did not request. SVG geometry is the usual culprit, so try\n` +
+          `  --props stroke-dashoffset,y,x,width,height,d,r,cx,cy`,
+      );
+    }
+  }
+
   if (label) {
     const out = join(cfg.outDir, "probe", `${label}.json`);
     mkdirSync(resolve(cwd, join(cfg.outDir, "probe")), { recursive: true });
